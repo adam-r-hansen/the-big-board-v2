@@ -13,18 +13,14 @@ import {
   List,
   ListItem,
   ListItemText,
+  Divider,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Stack,
 } from '@mui/material';
 import { createClient } from '@/lib/supabase/client';
-
-// Generate random code
-const generateCode = () => {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-};
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(false);
@@ -41,9 +37,23 @@ export default function AdminPage() {
   const [leagues, setLeagues] = useState<any[]>([]);
   const [loadingLeagues, setLoadingLeagues] = useState(true);
 
+  // Auto-assign
+  const [selectedLeague, setSelectedLeague] = useState('');
+  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+
   const supabase = createClient();
 
-  // Handle client-side mounting
+  // Generate random code
+  const generateCode = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
   useEffect(() => {
     setMounted(true);
     setJoinCode(generateCode());
@@ -69,6 +79,9 @@ export default function AdminPage() {
         .order('created_at', { ascending: false });
 
       setLeagues(data || []);
+      if (data && data.length > 0) {
+        setSelectedLeague(data[0].id);
+      }
       setLoadingLeagues(false);
     };
 
@@ -138,6 +151,36 @@ export default function AdminPage() {
     setLoading(false);
   };
 
+  const handleAutoAssign = async () => {
+    if (!selectedLeague) return;
+    
+    setAutoAssignLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/auto-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leagueSeasonId: selectedLeague,
+          week: selectedWeek,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Auto-assign failed');
+      }
+
+      setMessage({ type: 'success', text: data.message });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    }
+
+    setAutoAssignLoading(false);
+  };
+
   if (!mounted) {
     return (
       <Container maxWidth="md" sx={{ py: 4, textAlign: 'center' }}>
@@ -152,17 +195,68 @@ export default function AdminPage() {
         Admin Dashboard
       </Typography>
 
+      {message && (
+        <Alert severity={message.type} sx={{ mb: 3 }} onClose={() => setMessage(null)}>
+          {message.text}
+        </Alert>
+      )}
+
+      {/* Auto-Assign */}
+      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Auto-Assign Picks
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Manually trigger auto-assign for users who missed picks. Only works on completed weeks.
+        </Typography>
+
+        <Stack direction="row" spacing={2} alignItems="center">
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>League</InputLabel>
+            <Select
+              value={selectedLeague}
+              label="League"
+              onChange={(e) => setSelectedLeague(e.target.value)}
+            >
+              {leagues.map((ls) => (
+                <MenuItem key={ls.id} value={ls.id}>
+                  {ls.leagues_v2?.name} ({ls.season})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Week</InputLabel>
+            <Select
+              value={selectedWeek}
+              label="Week"
+              onChange={(e) => setSelectedWeek(Number(e.target.value))}
+            >
+              {Array.from({ length: 18 }, (_, i) => (
+                <MenuItem key={i + 1} value={i + 1}>
+                  Week {i + 1}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleAutoAssign}
+            disabled={autoAssignLoading || !selectedLeague}
+          >
+            {autoAssignLoading ? <CircularProgress size={24} /> : 'Run Auto-Assign'}
+          </Button>
+        </Stack>
+      </Paper>
+
       {/* Create League */}
       <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           Create New League
         </Typography>
-
-        {message && (
-          <Alert severity={message.type} sx={{ mb: 2 }}>
-            {message.text}
-          </Alert>
-        )}
 
         <Box component="form" onSubmit={handleCreateLeague}>
           <TextField
