@@ -82,13 +82,26 @@ export default function AppShell({
   };
 
   const handleLeagueSelect = (league: LeagueInfo) => {
+    // Update localStorage
+    localStorage.setItem('activeLeagueSeasonId', league.id);
+    
+    // Call parent handler
     onLeagueChange?.(league);
+    
+    // Dispatch custom event for other components
+    window.dispatchEvent(new CustomEvent('leagueChanged', { detail: league.id }));
+    
     handleLeagueClose();
   };
 
   const handleProfile = () => {
     handleClose();
     router.push('/profile');
+  };
+
+  const handleAdmin = () => {
+    handleClose();
+    router.push('/admin');
   };
 
   const handleLogout = async () => {
@@ -198,6 +211,7 @@ export default function AppShell({
               </Typography>
             </MenuItem>
             <MenuItem onClick={handleProfile}>Profile</MenuItem>
+            <MenuItem onClick={handleAdmin}>Admin</MenuItem>
             <MenuItem onClick={handleLogout}>Sign Out</MenuItem>
           </Menu>
         </Toolbar>

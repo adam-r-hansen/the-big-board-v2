@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Box,
   Container,
@@ -13,16 +14,20 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
   Stack,
+  Card,
+  CardContent,
+  CardActions,
 } from '@mui/material';
+import { Add, Stars, Group, Settings } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 
 export default function AdminPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -190,7 +195,7 @@ export default function AdminPage() {
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>
         Admin Dashboard
       </Typography>
@@ -201,115 +206,167 @@ export default function AdminPage() {
         </Alert>
       )}
 
-      {/* Auto-Assign */}
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Auto-Assign Picks
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Manually trigger auto-assign for users who missed picks. Only works on completed weeks.
-        </Typography>
+      {/* Quick Actions */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2, mb: 4 }}>
+        <Card>
+          <CardContent>
+            <Stars color="secondary" sx={{ fontSize: 40, mb: 1 }} />
+            <Typography variant="h6">Wrinkles</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Create and manage bonus picks
+            </Typography>
+          </CardContent>
+          <CardActions>
+            <Button size="small" onClick={() => router.push('/admin/wrinkles')}>
+              Manage Wrinkles
+            </Button>
+          </CardActions>
+        </Card>
 
-        <Stack direction="row" spacing={2} alignItems="center">
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>League</InputLabel>
-            <Select
-              value={selectedLeague}
-              label="League"
-              onChange={(e) => setSelectedLeague(e.target.value)}
+        <Card>
+          <CardContent>
+            <Group color="primary" sx={{ fontSize: 40, mb: 1 }} />
+            <Typography variant="h6">Members</Typography>
+            <Typography variant="body2" color="text.secondary">
+              View and manage league members
+            </Typography>
+          </CardContent>
+          <CardActions>
+            <Button size="small" disabled>
+              Coming Soon
+            </Button>
+          </CardActions>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Settings color="action" sx={{ fontSize: 40, mb: 1 }} />
+            <Typography variant="h6">Settings</Typography>
+            <Typography variant="body2" color="text.secondary">
+              League settings and playoffs
+            </Typography>
+          </CardContent>
+          <CardActions>
+            <Button size="small" disabled>
+              Coming Soon
+            </Button>
+          </CardActions>
+        </Card>
+      </Box>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+        {/* Auto-Assign */}
+        <Paper elevation={2} sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Auto-Assign Picks
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Manually trigger auto-assign for users who missed picks.
+          </Typography>
+
+          <Stack spacing={2}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>League</InputLabel>
+              <Select
+                value={selectedLeague}
+                label="League"
+                onChange={(e) => setSelectedLeague(e.target.value)}
+              >
+                {leagues.map((ls) => (
+                  <MenuItem key={ls.id} value={ls.id}>
+                    {ls.leagues_v2?.name} ({ls.season})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" fullWidth>
+              <InputLabel>Week</InputLabel>
+              <Select
+                value={selectedWeek}
+                label="Week"
+                onChange={(e) => setSelectedWeek(Number(e.target.value))}
+              >
+                {Array.from({ length: 18 }, (_, i) => (
+                  <MenuItem key={i + 1} value={i + 1}>
+                    Week {i + 1}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={handleAutoAssign}
+              disabled={autoAssignLoading || !selectedLeague}
             >
-              {leagues.map((ls) => (
-                <MenuItem key={ls.id} value={ls.id}>
-                  {ls.leagues_v2?.name} ({ls.season})
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              {autoAssignLoading ? <CircularProgress size={24} /> : 'Run Auto-Assign'}
+            </Button>
+          </Stack>
+        </Paper>
 
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Week</InputLabel>
-            <Select
-              value={selectedWeek}
-              label="Week"
-              onChange={(e) => setSelectedWeek(Number(e.target.value))}
-            >
-              {Array.from({ length: 18 }, (_, i) => (
-                <MenuItem key={i + 1} value={i + 1}>
-                  Week {i + 1}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+        {/* Create League */}
+        <Paper elevation={2} sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Create New League
+          </Typography>
 
-          <Button
-            variant="contained"
-            color="warning"
-            onClick={handleAutoAssign}
-            disabled={autoAssignLoading || !selectedLeague}
-          >
-            {autoAssignLoading ? <CircularProgress size={24} /> : 'Run Auto-Assign'}
-          </Button>
-        </Stack>
-      </Paper>
+          <Box component="form" onSubmit={handleCreateLeague}>
+            <Stack spacing={2}>
+              <TextField
+                label="League Name"
+                size="small"
+                fullWidth
+                required
+                value={leagueName}
+                onChange={(e) => setLeagueName(e.target.value)}
+              />
 
-      {/* Create League */}
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Create New League
-        </Typography>
+              <TextField
+                label="Season Year"
+                type="number"
+                size="small"
+                fullWidth
+                required
+                value={season}
+                onChange={(e) => setSeason(Number(e.target.value))}
+              />
 
-        <Box component="form" onSubmit={handleCreateLeague}>
-          <TextField
-            label="League Name"
-            fullWidth
-            required
-            value={leagueName}
-            onChange={(e) => setLeagueName(e.target.value)}
-            sx={{ mb: 2 }}
-          />
+              <TextField
+                label="Join Code (URL)"
+                size="small"
+                fullWidth
+                required
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                helperText={`Join URL: /join/${joinCode}`}
+              />
 
-          <TextField
-            label="Season Year"
-            type="number"
-            fullWidth
-            required
-            value={season}
-            onChange={(e) => setSeason(Number(e.target.value))}
-            sx={{ mb: 2 }}
-          />
+              <TextField
+                label="Join Passkey"
+                size="small"
+                fullWidth
+                required
+                value={joinPasskey}
+                onChange={(e) => setJoinPasskey(e.target.value)}
+              />
 
-          <TextField
-            label="Join Code (URL)"
-            fullWidth
-            required
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            helperText={`Join URL: /join/${joinCode}`}
-            sx={{ mb: 2 }}
-          />
-
-          <TextField
-            label="Join Passkey"
-            fullWidth
-            required
-            value={joinPasskey}
-            onChange={(e) => setJoinPasskey(e.target.value)}
-            helperText="Users will enter this to verify access"
-            sx={{ mb: 2 }}
-          />
-
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={loading || !leagueName}
-          >
-            {loading ? <CircularProgress size={24} /> : 'Create League'}
-          </Button>
-        </Box>
-      </Paper>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={loading || !leagueName}
+                startIcon={loading ? <CircularProgress size={20} /> : <Add />}
+              >
+                Create League
+              </Button>
+            </Stack>
+          </Box>
+        </Paper>
+      </Box>
 
       {/* Existing Leagues */}
-      <Paper elevation={2} sx={{ p: 3 }}>
+      <Paper elevation={2} sx={{ p: 3, mt: 3 }}>
         <Typography variant="h6" gutterBottom>
           Existing Leagues
         </Typography>

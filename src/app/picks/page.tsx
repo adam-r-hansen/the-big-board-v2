@@ -20,10 +20,11 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { Check } from '@mui/icons-material';
+import { Check, Stars } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 import GameCard from '@/components/picks/GameCard';
 import TeamGrid from '@/components/picks/TeamGrid';
+import WrinkleCard from '@/components/picks/WrinkleCard';
 
 type Team = {
   id: string;
@@ -63,6 +64,26 @@ type PickWithGame = Pick & {
   game_status: string;
 };
 
+type Wrinkle = {
+  id: string;
+  name: string;
+  kind: string;
+  week: number;
+  spread: number | null;
+  spread_team_id: string | null;
+  config: any;
+  game: Game;
+};
+
+type WrinklePick = {
+  id: string;
+  wrinkle_id: string;
+  team_id: string;
+  game_id: string;
+  points: number;
+  selection: any;
+};
+
 export default function PicksPage() {
   const router = useRouter();
   const theme = useTheme();
@@ -79,6 +100,10 @@ export default function PicksPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mobileTab, setMobileTab] = useState(0);
+
+  // Wrinkles
+  const [wrinkles, setWrinkles] = useState<Wrinkle[]>([]);
+  const [wrinklePicks, setWrinklePicks] = useState<WrinklePick[]>([]);
 
   const supabase = createClient();
 
@@ -143,15 +168,26 @@ export default function PicksPage() {
         setUsedTeams(new Set(picksWithStatus.map((p) => p.team_id)));
       }
 
+      // Load wrinkle picks
+      const { data: userWrinklePicks } = await supabase
+        .from('wrinkle_picks_v2')
+        .select('*')
+        .eq('profile_id', user.id);
+
+      if (userWrinklePicks) {
+        setWrinklePicks(userWrinklePicks);
+      }
+
       setLoading(false);
     };
 
     loadData();
   }, [supabase, router]);
 
-  // Load games when week changes
+  // Load games and wrinkles when week changes
   useEffect(() => {
-    const loadGames = async () => {
+    const loadGamesAndWrinkles = async () => {
+      // Load games
       const { data: weekGames } = await supabase
         .from('games')
         .select(`
@@ -172,44 +208,40 @@ export default function PicksPage() {
 
       if (weekGames) {
         setGames(weekGames as unknown as Game[]);
-        
-        // Check if any picks need to be locked
-        if (userId && activeLeagueSeasonId) {
-          lockPicksForStartedGames(weekGames as unknown as Game[]);
+      }
+
+      // Load wrinkles for this week
+      if (activeLeagueSeasonId) {
+        const { data: weekWrinkles } = await supabase
+          .from('wrinkles_v2')
+          .select(`
+            *,
+            game:games(
+              id,
+              home_team,
+              away_team,
+              home_score,
+              away_score,
+              game_utc,
+              status,
+              home:teams!games_home_team_fkey(id, name, short_name, abbreviation, color_primary, logo),
+              away:teams!games_away_team_fkey(id, name, short_name, abbreviation, color_primary, logo)
+            )
+          `)
+          .eq('league_season_id', activeLeagueSeasonId)
+          .eq('week', selectedWeek)
+          .eq('status', 'active');
+
+        if (weekWrinkles) {
+          setWrinkles(weekWrinkles as unknown as Wrinkle[]);
         }
       }
     };
 
-    if (!loading) {
-      loadGames();
+    if (!loading && activeLeagueSeasonId) {
+      loadGamesAndWrinkles();
     }
-  }, [selectedWeek, loading, supabase, userId, activeLeagueSeasonId]);
-
-  // Lock picks for games that have started
-  const lockPicksForStartedGames = async (weekGames: Game[]) => {
-    const now = new Date();
-    
-    for (const game of weekGames) {
-      const gameTime = new Date(game.game_utc);
-      if (gameTime < now) {
-        // Find pick for this game that isn't locked
-        const pick = picks.find(p => p.game_id === game.id && !p.locked_at);
-        if (pick) {
-          // Lock the pick
-          const { error } = await supabase
-            .from('picks_v2')
-            .update({ locked_at: gameTime.toISOString() })
-            .eq('id', pick.id);
-          
-          if (!error) {
-            setPicks(prev => prev.map(p => 
-              p.id === pick.id ? { ...p, locked_at: gameTime.toISOString() } : p
-            ));
-          }
-        }
-      }
-    }
-  };
+  }, [selectedWeek, loading, supabase, activeLeagueSeasonId]);
 
   // Get picks for current week
   const weekPicks = picks.filter((p) => p.week === selectedWeek);
@@ -232,11 +264,10 @@ export default function PicksPage() {
     return new Date(game.game_utc) < new Date();
   };
 
-  // Handle team selection
+  // Handle team selection for regular picks
   const handleSelectTeam = async (game: Game, teamId: string) => {
     if (!activeLeagueSeasonId || !userId || saving) return;
 
-    // Check if game has started
     const gameTime = new Date(game.game_utc);
     if (gameTime < new Date()) {
       setError('This game has already started');
@@ -246,11 +277,9 @@ export default function PicksPage() {
     setSaving(true);
     setError(null);
 
-    // Check if already picked a team from this game
     const existingPick = weekPicks.find((p) => p.game_id === game.id);
 
     if (existingPick) {
-      // Can't change locked picks
       if (existingPick.locked_at) {
         setError('This pick is locked');
         setSaving(false);
@@ -258,7 +287,6 @@ export default function PicksPage() {
       }
 
       if (existingPick.team_id === teamId) {
-        // Same team - remove pick
         await supabase.from('picks_v2').delete().eq('id', existingPick.id);
         setPicks(picks.filter((p) => p.id !== existingPick.id));
         setUsedTeams((prev) => {
@@ -267,7 +295,6 @@ export default function PicksPage() {
           return next;
         });
       } else {
-        // Different team in same game - update pick
         await supabase
           .from('picks_v2')
           .update({ team_id: teamId })
@@ -285,7 +312,6 @@ export default function PicksPage() {
         });
       }
     } else {
-      // New pick
       if (weekPickCount >= 2) {
         setError('You can only make 2 picks per week');
         setSaving(false);
@@ -321,6 +347,62 @@ export default function PicksPage() {
     setSaving(false);
   };
 
+  // Handle wrinkle pick
+  const handleWrinklePick = async (wrinkle: Wrinkle, teamId: string) => {
+    if (!userId || saving) return;
+
+    const gameTime = new Date(wrinkle.game.game_utc);
+    if (gameTime < new Date()) {
+      setError('This wrinkle game has already started');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    const existingPick = wrinklePicks.find((p) => p.wrinkle_id === wrinkle.id);
+
+    if (existingPick) {
+      if (existingPick.team_id === teamId) {
+        // Remove pick
+        await supabase.from('wrinkle_picks_v2').delete().eq('id', existingPick.id);
+        setWrinklePicks(wrinklePicks.filter((p) => p.id !== existingPick.id));
+      } else {
+        // Change pick
+        await supabase
+          .from('wrinkle_picks_v2')
+          .update({ team_id: teamId, game_id: wrinkle.game.id })
+          .eq('id', existingPick.id);
+        setWrinklePicks(
+          wrinklePicks.map((p) =>
+            p.id === existingPick.id ? { ...p, team_id: teamId, game_id: wrinkle.game.id } : p
+          )
+        );
+      }
+    } else {
+      // New pick
+      const { data: newPick, error: insertError } = await supabase
+        .from('wrinkle_picks_v2')
+        .insert({
+          wrinkle_id: wrinkle.id,
+          profile_id: userId,
+          team_id: teamId,
+          game_id: wrinkle.game.id,
+          selection: { team_id: teamId },
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setError(insertError.message);
+      } else if (newPick) {
+        setWrinklePicks([...wrinklePicks, newPick]);
+      }
+    }
+
+    setSaving(false);
+  };
+
   if (loading) {
     return (
       <Container sx={{ py: 4, textAlign: 'center' }}>
@@ -340,7 +422,7 @@ export default function PicksPage() {
           label="Week"
           onChange={(e) => setSelectedWeek(Number(e.target.value))}
         >
-          {Array.from({ length: 16 }, (_, i) => (
+          {Array.from({ length: 18 }, (_, i) => (
             <MenuItem key={i + 1} value={i + 1}>
               Week {i + 1}
               {picks.filter((p) => p.week === i + 1).length >= 2 && ' ✓'}
@@ -367,9 +449,31 @@ export default function PicksPage() {
         </Stack>
       </Paper>
 
-      {/* TODO: Wrinkles would go here */}
+      {/* Wrinkles */}
+      {wrinkles.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" color="secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+            <Stars fontSize="small" />
+            Wrinkles
+          </Typography>
+          <Stack spacing={2}>
+            {wrinkles.map((wrinkle) => (
+              <WrinkleCard
+                key={wrinkle.id}
+                wrinkle={wrinkle}
+                pick={wrinklePicks.find((p) => p.wrinkle_id === wrinkle.id)}
+                onSelectTeam={(teamId) => handleWrinklePick(wrinkle, teamId)}
+                disabled={saving}
+              />
+            ))}
+          </Stack>
+        </Box>
+      )}
 
       {/* Games List */}
+      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+        Games
+      </Typography>
       <Stack spacing={2}>
         {games.map((game) => (
           <GameCard
