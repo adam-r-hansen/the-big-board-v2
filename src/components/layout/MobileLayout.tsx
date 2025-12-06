@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Box, Paper, Tabs, Tab, Typography, Stack, Chip, CircularProgress } from '@mui/material';
+import { Box, Paper, Tabs, Tab, Typography, Stack, Chip, CircularProgress, Button } from '@mui/material';
 import { SportsFootball, Leaderboard, EmojiEvents, Check, Lock } from '@mui/icons-material';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import NFLGames from './NFLGames';
+import Standings from './Standings';
 
 type Pick = {
   id: string;
@@ -51,6 +54,7 @@ interface Props {
 }
 
 export default function MobileLayout({ children }: Props) {
+  const router = useRouter();
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
@@ -174,7 +178,7 @@ export default function MobileLayout({ children }: Props) {
         >
           <Tab icon={<SportsFootball />} label="Picks" sx={{ minHeight: 48 }} />
           <Tab icon={<Leaderboard />} label="League" sx={{ minHeight: 48 }} />
-          <Tab icon={<EmojiEvents />} label="NFL Games" sx={{ minHeight: 48 }} />
+          <Tab icon={<EmojiEvents />} label="Scores" sx={{ minHeight: 48 }} />
         </Tabs>
       </Paper>
 
@@ -208,9 +212,18 @@ export default function MobileLayout({ children }: Props) {
               My Picks
             </Typography>
             {weekPicks.length === 0 ? (
-              <Typography variant="body2" color="text.disabled" sx={{ mb: 2 }}>
-                No picks yet this week
-              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.disabled" sx={{ mb: 1 }}>
+                  No picks yet this week
+                </Typography>
+                <Button 
+                  variant="contained" 
+                  size="small"
+                  onClick={() => router.push('/picks')}
+                >
+                  Make Picks
+                </Button>
+              </Box>
             ) : (
               <Stack spacing={1} sx={{ mb: 2 }}>
                 {weekPicks.map((pick) => (
@@ -254,40 +267,20 @@ export default function MobileLayout({ children }: Props) {
               </Stack>
             </Paper>
 
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Standings
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1, color: 'text.disabled' }}>
-                Coming soon
-              </Typography>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Quick Stats
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1, color: 'text.disabled' }}>
-                Coming soon
-              </Typography>
-            </Paper>
+            {/* Standings */}
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              Standings
+            </Typography>
+            <Standings />
           </>
         )}
       </TabPanel>
 
       <TabPanel value={tab} index={2}>
         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-          NFL Games
+          NFL Scores
         </Typography>
-
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            This Week&apos;s Games
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 1, color: 'text.disabled' }}>
-            Coming soon
-          </Typography>
-        </Paper>
+        <NFLGames />
       </TabPanel>
     </Box>
   );

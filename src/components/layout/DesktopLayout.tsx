@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Box, Paper, Typography, Chip, Stack, CircularProgress } from '@mui/material';
+import { Box, Paper, Typography, Chip, Stack, CircularProgress, Button } from '@mui/material';
 import { Check, Lock } from '@mui/icons-material';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import NFLGames from './NFLGames';
+import Standings from './Standings';
 
 type Pick = {
   id: string;
@@ -33,6 +36,7 @@ interface Props {
 }
 
 export default function DesktopLayout({ children }: Props) {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [weekPicks, setWeekPicks] = useState<Pick[]>([]);
@@ -192,9 +196,18 @@ export default function DesktopLayout({ children }: Props) {
               My Picks
             </Typography>
             {weekPicks.length === 0 ? (
-              <Typography variant="body2" color="text.disabled" sx={{ mb: 2 }}>
-                No picks yet this week
-              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.disabled" sx={{ mb: 1 }}>
+                  No picks yet this week
+                </Typography>
+                <Button 
+                  variant="contained" 
+                  size="small"
+                  onClick={() => router.push('/picks')}
+                >
+                  Make Picks
+                </Button>
+              </Box>
             ) : (
               <Stack spacing={1} sx={{ mb: 2 }}>
                 {weekPicks.map((pick) => (
@@ -245,24 +258,10 @@ export default function DesktopLayout({ children }: Props) {
           </Paper>
 
           {/* Standings */}
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Standings
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: 'text.disabled' }}>
-              Coming soon
-            </Typography>
-          </Paper>
-
-          {/* Quick Stats */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Quick Stats
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: 'text.disabled' }}>
-              Coming soon
-            </Typography>
-          </Paper>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+            Standings
+          </Typography>
+          <Standings />
         </Box>
       </Paper>
 
@@ -280,14 +279,7 @@ export default function DesktopLayout({ children }: Props) {
           NFL Games
         </Typography>
         <Box sx={{ flexGrow: 1 }}>
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              This Week&apos;s Games
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: 'text.disabled' }}>
-              Coming soon
-            </Typography>
-          </Paper>
+          <NFLGames />
         </Box>
       </Paper>
     </Box>
