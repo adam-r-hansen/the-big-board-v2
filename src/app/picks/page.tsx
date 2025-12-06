@@ -1,0 +1,464 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Box,
+  Container,
+  Paper,
+  Typography,
+  CircularProgress,
+  Alert,
+  Chip,
+  Stack,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  useMediaQuery,
+  useTheme,
+  Tabs,
+  Tab,
+} from '@mui/material';
+import { Check } from '@mui/icons-material';
+import { createClient } from '@/lib/supabase/client';
+import GameCard from '@/components/picks/GameCard';
+import TeamGrid from '@/components/picks/TeamGrid';
+
+type Team = {
+  id: string;
+  name: string;
+  short_name: string;
+  abbreviation: string;
+  color_primary: string;
+  color_secondary: string;
+  logo: string;
+  conference: string;
+  division: string;
+};
+
+type Game = {
+  id: string;
+  week: number;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  game_utc: string;
+  status: string;
+  home: Team;
+  away: Team;
+};
+
+type Pick = {
+  id: string;
+  week: number;
+  team_id: string;
+  game_id: string;
+  points: number;
+  locked_at: string | null;
+};
+
+export default function PicksPage() {
+  const router = useRouter();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [games, setGames] = useState<Game[]>([]);
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
+  const [picks, setPicks] = useState<Pick[]>([]);
+  const [usedTeams, setUsedTeams] = useState<Set<string>>(new Set());
+  const [activeLeagueSeasonId, setActiveLeagueSeasonId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [mobileTab, setMobileTab] = useState(0);
+
+  const supabase = createClient();
+
+  // Load initial data
+  useEffect(() => {
+    const loadData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth/login');
+        return;
+      }
+      setUserId(user.id);
+
+      // Get active league from localStorage
+      const leagueSeasonId = localStorage.getItem('activeLeagueSeasonId');
+      if (!leagueSeasonId) {
+        setError('No league selected');
+        setLoading(false);
+        return;
+      }
+      setActiveLeagueSeasonId(leagueSeasonId);
+
+      // Load all teams
+      const { data: teams } = await supabase
+        .from('teams')
+        .select('id, name, short_name, abbreviation, color_primary, color_secondary, logo, conference, division');
+      
+      if (teams) {
+        setAllTeams(teams);
+      }
+
+      // Determine current week based on game dates
+      const now = new Date();
+      const { data: nextGame } = await supabase
+        .from('games')
+        .select('week')
+        .eq('season', 2025)
+        .gte('game_utc', now.toISOString())
+        .order('game_utc', { ascending: true })
+        .limit(1)
+        .single();
+
+      const week = nextGame?.week || 1;
+      setSelectedWeek(week);
+
+      // Load all user picks for the season
+      const { data: userPicks } = await supabase
+        .from('picks_v2')
+        .select('*')
+        .eq('league_season_id', leagueSeasonId)
+        .eq('profile_id', user.id);
+
+      if (userPicks) {
+        setPicks(userPicks);
+        setUsedTeams(new Set(userPicks.map((p) => p.team_id)));
+      }
+
+      setLoading(false);
+    };
+
+    loadData();
+  }, [supabase, router]);
+
+  // Load games when week changes
+  useEffect(() => {
+    const loadGames = async () => {
+      const { data: weekGames } = await supabase
+        .from('games')
+        .select(`
+          id,
+          week,
+          home_team,
+          away_team,
+          home_score,
+          away_score,
+          game_utc,
+          status,
+          home:teams!games_home_team_fkey(id, name, short_name, abbreviation, color_primary, logo),
+          away:teams!games_away_team_fkey(id, name, short_name, abbreviation, color_primary, logo)
+        `)
+        .eq('season', 2025)
+        .eq('week', selectedWeek)
+        .order('game_utc', { ascending: true });
+
+      if (weekGames) {
+        setGames(weekGames as unknown as Game[]);
+        
+        // Check if any picks need to be locked
+        if (userId && activeLeagueSeasonId) {
+          lockPicksForStartedGames(weekGames as unknown as Game[]);
+        }
+      }
+    };
+
+    if (!loading) {
+      loadGames();
+    }
+  }, [selectedWeek, loading, supabase, userId, activeLeagueSeasonId]);
+
+  // Lock picks for games that have started
+  const lockPicksForStartedGames = async (weekGames: Game[]) => {
+    const now = new Date();
+    
+    for (const game of weekGames) {
+      const gameTime = new Date(game.game_utc);
+      if (gameTime < now) {
+        // Find pick for this game that isn't locked
+        const pick = picks.find(p => p.game_id === game.id && !p.locked_at);
+        if (pick) {
+          // Lock the pick
+          const { error } = await supabase
+            .from('picks_v2')
+            .update({ locked_at: gameTime.toISOString() })
+            .eq('id', pick.id);
+          
+          if (!error) {
+            setPicks(prev => prev.map(p => 
+              p.id === pick.id ? { ...p, locked_at: gameTime.toISOString() } : p
+            ));
+          }
+        }
+      }
+    }
+  };
+
+  // Get picks for current week
+  const weekPicks = picks.filter((p) => p.week === selectedWeek);
+  const weekPickCount = weekPicks.length;
+
+  // Build pickedTeams map for TeamGrid
+  const pickedTeams = new Map<string, { week: number; points: number }>();
+  picks.forEach((p) => {
+    pickedTeams.set(p.team_id, { week: p.week, points: p.points });
+  });
+
+  // Check if a specific pick is locked
+  const isPickLocked = (gameId: string) => {
+    const game = games.find(g => g.id === gameId);
+    if (!game) return false;
+    return new Date(game.game_utc) < new Date();
+  };
+
+  // Handle team selection
+  const handleSelectTeam = async (game: Game, teamId: string) => {
+    if (!activeLeagueSeasonId || !userId || saving) return;
+
+    // Check if game has started
+    const gameTime = new Date(game.game_utc);
+    if (gameTime < new Date()) {
+      setError('This game has already started');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    // Check if already picked a team from this game
+    const existingPick = weekPicks.find((p) => p.game_id === game.id);
+
+    if (existingPick) {
+      // Can't change locked picks
+      if (existingPick.locked_at) {
+        setError('This pick is locked');
+        setSaving(false);
+        return;
+      }
+
+      if (existingPick.team_id === teamId) {
+        // Same team - remove pick
+        await supabase.from('picks_v2').delete().eq('id', existingPick.id);
+        setPicks(picks.filter((p) => p.id !== existingPick.id));
+        setUsedTeams((prev) => {
+          const next = new Set(prev);
+          next.delete(teamId);
+          return next;
+        });
+      } else {
+        // Different team in same game - update pick
+        await supabase
+          .from('picks_v2')
+          .update({ team_id: teamId })
+          .eq('id', existingPick.id);
+        setPicks(
+          picks.map((p) =>
+            p.id === existingPick.id ? { ...p, team_id: teamId } : p
+          )
+        );
+        setUsedTeams((prev) => {
+          const next = new Set(prev);
+          next.delete(existingPick.team_id);
+          next.add(teamId);
+          return next;
+        });
+      }
+    } else {
+      // New pick
+      if (weekPickCount >= 2) {
+        setError('You can only make 2 picks per week');
+        setSaving(false);
+        return;
+      }
+
+      if (usedTeams.has(teamId)) {
+        setError('You have already used this team');
+        setSaving(false);
+        return;
+      }
+
+      const { data: newPick, error: insertError } = await supabase
+        .from('picks_v2')
+        .insert({
+          league_season_id: activeLeagueSeasonId,
+          profile_id: userId,
+          week: selectedWeek,
+          team_id: teamId,
+          game_id: game.id,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setError(insertError.message);
+      } else if (newPick) {
+        setPicks([...picks, newPick]);
+        setUsedTeams((prev) => new Set([...prev, teamId]));
+      }
+    }
+
+    setSaving(false);
+  };
+
+  if (loading) {
+    return (
+      <Container sx={{ py: 4, textAlign: 'center' }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
+
+  // Games Panel Content
+  const GamesPanel = () => (
+    <Box>
+      {/* Week Selector */}
+      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+        <InputLabel>Week</InputLabel>
+        <Select
+          value={selectedWeek}
+          label="Week"
+          onChange={(e) => setSelectedWeek(Number(e.target.value))}
+        >
+          {Array.from({ length: 16 }, (_, i) => (
+            <MenuItem key={i + 1} value={i + 1}>
+              Week {i + 1}
+              {picks.filter((p) => p.week === i + 1).length >= 2 && ' ✓'}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {/* Week Status */}
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+          <Typography variant="body2">
+            Week {selectedWeek}:
+          </Typography>
+          <Chip
+            icon={weekPickCount >= 2 ? <Check /> : undefined}
+            label={`${weekPickCount}/2 picks`}
+            color={weekPickCount >= 2 ? 'success' : 'default'}
+            size="small"
+          />
+          <Typography variant="caption" color="text.secondary">
+            {32 - usedTeams.size} teams remaining
+          </Typography>
+        </Stack>
+      </Paper>
+
+      {/* TODO: Wrinkles would go here */}
+
+      {/* Games List */}
+      <Stack spacing={2}>
+        {games.map((game) => (
+          <GameCard
+            key={game.id}
+            game={game}
+            selectedTeamId={weekPicks.find((p) => p.game_id === game.id)?.team_id}
+            usedTeams={usedTeams}
+            onSelectTeam={(teamId) => handleSelectTeam(game, teamId)}
+            disabled={saving || (weekPickCount >= 2 && !weekPicks.find((p) => p.game_id === game.id))}
+            isLocked={isPickLocked(game.id)}
+          />
+        ))}
+      </Stack>
+    </Box>
+  );
+
+  // Team Grid Panel Content
+  const TeamsPanel = () => (
+    <TeamGrid teams={allTeams} pickedTeams={pickedTeams} />
+  );
+
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <Container maxWidth="sm" sx={{ py: 2, pb: 10 }}>
+        <Typography variant="h5" gutterBottom>
+          Make Your Picks
+        </Typography>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        {mobileTab === 0 ? <GamesPanel /> : <TeamsPanel />}
+
+        {/* Bottom Tabs */}
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+          }}
+          elevation={3}
+        >
+          <Tabs
+            value={mobileTab}
+            onChange={(_, v) => setMobileTab(v)}
+            variant="fullWidth"
+          >
+            <Tab label="Pick" />
+            <Tab label="My Teams" />
+          </Tabs>
+        </Paper>
+      </Container>
+    );
+  }
+
+  // Desktop Layout - 40/60 split
+  return (
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 1000 }} 
+          onClose={() => setError(null)}
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* Left Panel - 40% - Games */}
+      <Box
+        sx={{
+          width: '40%',
+          p: 3,
+          overflow: 'auto',
+          borderRight: 1,
+          borderColor: 'divider',
+        }}
+      >
+        <Typography variant="h5" gutterBottom>
+          Make Your Picks
+        </Typography>
+        <GamesPanel />
+      </Box>
+
+      {/* Right Panel - 60% - Team Grid */}
+      <Box
+        sx={{
+          width: '60%',
+          p: 3,
+          overflow: 'auto',
+          bgcolor: 'background.default',
+        }}
+      >
+        <Typography variant="h5" gutterBottom>
+          Your Season
+        </Typography>
+        <TeamsPanel />
+      </Box>
+    </Box>
+  );
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { 
   Box, 
   AppBar, 
@@ -54,6 +54,7 @@ export default function AppShell({
   onLeagueChange,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const { mode, setMode } = useThemeMode();
@@ -104,6 +105,8 @@ export default function AppShell({
   };
 
   const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : Brightness4;
+
+  const isPicksPage = pathname === '/picks';
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -156,6 +159,20 @@ export default function AppShell({
             ))}
           </Menu>
 
+          {/* Nav Links */}
+          <Button
+            color="inherit"
+            onClick={() => router.push('/picks')}
+            sx={{ 
+              ml: 2,
+              fontWeight: isPicksPage ? 700 : 400,
+              borderBottom: isPicksPage ? '2px solid white' : 'none',
+              borderRadius: 0,
+            }}
+          >
+            Make Picks
+          </Button>
+
           <Box sx={{ flexGrow: 1 }} />
 
           <IconButton color="inherit" onClick={cycleTheme} title={`Theme: ${mode}`}>
@@ -188,7 +205,9 @@ export default function AppShell({
 
       {/* Main Content - Desktop or Mobile Layout */}
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-        {isMobile ? (
+        {isPicksPage ? (
+          children
+        ) : isMobile ? (
           <MobileLayout>{children}</MobileLayout>
         ) : (
           <DesktopLayout>{children}</DesktopLayout>
