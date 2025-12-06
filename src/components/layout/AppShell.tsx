@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Box, 
   AppBar, 
@@ -11,29 +12,53 @@ import {
   Menu,
   MenuItem,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Button,
+  Chip,
 } from '@mui/material';
 import { 
   LightMode, 
   DarkMode, 
   Brightness4,
-  Person
+  Person,
+  KeyboardArrowDown,
 } from '@mui/icons-material';
 import { useThemeMode } from '@/theme/ThemeProvider';
 import { createClient } from '@/lib/supabase/client';
 import DesktopLayout from './DesktopLayout';
 import MobileLayout from './MobileLayout';
 
+type LeagueInfo = {
+  id: string;
+  league_id: string;
+  season: number;
+  leagues_v2: {
+    id: string;
+    name: string;
+  };
+};
+
 interface Props {
   children: React.ReactNode;
   userEmail?: string;
+  leagues?: LeagueInfo[];
+  activeLeague?: LeagueInfo | null;
+  onLeagueChange?: (league: LeagueInfo) => void;
 }
 
-export default function AppShell({ children, userEmail }: Props) {
+export default function AppShell({ 
+  children, 
+  userEmail,
+  leagues = [],
+  activeLeague,
+  onLeagueChange,
+}: Props) {
+  const router = useRouter();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
-  const { mode, setMode, resolvedMode } = useThemeMode();
+  const { mode, setMode } = useThemeMode();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [leagueAnchorEl, setLeagueAnchorEl] = useState<null | HTMLElement>(null);
 
   const supabase = createClient();
 
@@ -43,6 +68,26 @@ export default function AppShell({ children, userEmail }: Props) {
 
   const handleClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleLeagueMenu = (event: React.MouseEvent<HTMLElement>) => {
+    if (leagues.length > 1) {
+      setLeagueAnchorEl(event.currentTarget);
+    }
+  };
+
+  const handleLeagueClose = () => {
+    setLeagueAnchorEl(null);
+  };
+
+  const handleLeagueSelect = (league: LeagueInfo) => {
+    onLeagueChange?.(league);
+    handleLeagueClose();
+  };
+
+  const handleProfile = () => {
+    handleClose();
+    router.push('/profile');
   };
 
   const handleLogout = async () => {
@@ -65,9 +110,53 @@ export default function AppShell({ children, userEmail }: Props) {
       {/* Top App Bar */}
       <AppBar position="sticky" elevation={1}>
         <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
+          <Typography 
+            variant="h6" 
+            sx={{ fontWeight: 700, cursor: 'pointer', mr: 2 }}
+            onClick={() => router.push('/')}
+          >
             The Big Board
           </Typography>
+
+          {/* League Switcher */}
+          {activeLeague && (
+            <Button
+              color="inherit"
+              onClick={handleLeagueMenu}
+              endIcon={leagues.length > 1 ? <KeyboardArrowDown /> : undefined}
+              sx={{ textTransform: 'none' }}
+            >
+              {activeLeague.leagues_v2.name}
+              <Chip 
+                label={activeLeague.season} 
+                size="small" 
+                sx={{ ml: 1, height: 20, bgcolor: 'rgba(255,255,255,0.2)' }} 
+              />
+            </Button>
+          )}
+
+          <Menu
+            anchorEl={leagueAnchorEl}
+            open={Boolean(leagueAnchorEl)}
+            onClose={handleLeagueClose}
+          >
+            {leagues.map((league) => (
+              <MenuItem 
+                key={league.id}
+                onClick={() => handleLeagueSelect(league)}
+                selected={league.id === activeLeague?.id}
+              >
+                {league.leagues_v2.name}
+                <Chip 
+                  label={league.season} 
+                  size="small" 
+                  sx={{ ml: 1, height: 20 }} 
+                />
+              </MenuItem>
+            ))}
+          </Menu>
+
+          <Box sx={{ flexGrow: 1 }} />
 
           <IconButton color="inherit" onClick={cycleTheme} title={`Theme: ${mode}`}>
             <ThemeIcon />
@@ -91,8 +180,7 @@ export default function AppShell({ children, userEmail }: Props) {
                 {userEmail}
               </Typography>
             </MenuItem>
-            <MenuItem onClick={handleClose}>Profile</MenuItem>
-            <MenuItem onClick={handleClose}>Settings</MenuItem>
+            <MenuItem onClick={handleProfile}>Profile</MenuItem>
             <MenuItem onClick={handleLogout}>Sign Out</MenuItem>
           </Menu>
         </Toolbar>
