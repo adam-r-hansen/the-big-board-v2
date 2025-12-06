@@ -1,7 +1,17 @@
 'use client';
 
-import { Box, Paper, Typography, ButtonBase } from '@mui/material';
-import { Lock, CheckCircle } from '@mui/icons-material';
+import { Box, Paper, Typography, Chip, Divider } from '@mui/material';
+import { 
+  AddCircle, 
+  CheckCircle, 
+  Cancel, 
+  Lock, 
+  Block,
+  Schedule,
+  TrendingUp,
+  TrendingDown,
+  Circle,
+} from '@mui/icons-material';
 
 type Team = {
   id: string;
@@ -59,88 +69,158 @@ export default function GameCard({
     return `${day} ${time}`;
   };
 
-  const TeamRow = ({ team, isHome }: { team: Team; isHome: boolean }) => {
+  const TeamRow = ({ team, opponent, isHome }: { team: Team; opponent: Team; isHome: boolean }) => {
     const isSelected = selectedTeamId === team.id;
     const isUsedElsewhere = usedTeams.has(team.id) && !isSelected;
     const score = isHome ? game.home_score : game.away_score;
     const opponentScore = isHome ? game.away_score : game.home_score;
-    const isWinner = isComplete && score !== null && opponentScore !== null && score > opponentScore;
+    const isWinning = (score ?? 0) > (opponentScore ?? 0);
+    const isLosing = (score ?? 0) < (opponentScore ?? 0);
+    const isFinalWin = isComplete && isWinning;
+    const isFinalLoss = isComplete && isLosing;
     const canSelect = !isLocked && !isUsedElsewhere && !disabled;
 
+    // Determine border color
+    const getBorderColor = () => {
+      if (isUsedElsewhere) return 'grey.400';
+      if (isFinalWin) return 'success.main';
+      if (isFinalLoss) return 'error.main';
+      if (isLive && isWinning) return 'success.main';
+      if (isLive && isLosing) return 'error.main';
+      if (isSelected) return 'success.main';
+      return 'transparent';
+    };
+
+    // Determine status chip
+    const getStatus = () => {
+      if (isUsedElsewhere) return { label: 'Used', color: 'default' as const, icon: <Block sx={{ fontSize: 14 }} /> };
+      if (isFinalWin) return { label: 'Won', color: 'success' as const, icon: <TrendingUp sx={{ fontSize: 14 }} /> };
+      if (isFinalLoss) return { label: 'Lost', color: 'error' as const, icon: <TrendingDown sx={{ fontSize: 14 }} /> };
+      if (isLive && isWinning) return { label: 'Winning', color: 'success' as const, icon: <TrendingUp sx={{ fontSize: 14 }} /> };
+      if (isLive && isLosing) return { label: 'Losing', color: 'error' as const, icon: <TrendingDown sx={{ fontSize: 14 }} /> };
+      if (isSelected) return { label: 'Picked', color: 'success' as const, icon: <CheckCircle sx={{ fontSize: 14 }} /> };
+      return null;
+    };
+
+    const status = getStatus();
+
     return (
-      <ButtonBase
+      <Box
         onClick={() => canSelect && onSelectTeam(team.id)}
-        disabled={!canSelect}
         sx={{
+          p: 1.5,
           display: 'flex',
           alignItems: 'center',
-          width: '100%',
-          p: 1.5,
+          gap: 1.5,
+          borderLeft: 4,
+          borderColor: getBorderColor(),
+          cursor: canSelect ? 'pointer' : 'default',
+          opacity: isUsedElsewhere ? 0.5 : 1,
+          bgcolor: isSelected ? 'action.selected' : 'transparent',
           borderRadius: 1,
-          transition: 'all 0.15s',
-          bgcolor: isSelected 
-            ? isComplete 
-              ? isWinner ? 'success.main' : 'error.main'
-              : team.color_primary 
-            : 'transparent',
-          color: isSelected ? '#fff' : isUsedElsewhere ? 'text.disabled' : 'text.primary',
-          opacity: isUsedElsewhere && !isSelected ? 0.4 : 1,
+          transition: 'all 0.15s ease',
           '&:hover': canSelect ? {
-            bgcolor: isSelected ? team.color_primary : 'action.hover',
+            bgcolor: 'action.hover',
           } : {},
         }}
       >
+        {/* Team Logo with white background circle */}
         <Box
-          component="img"
-          src={team.logo}
-          alt={team.short_name}
           sx={{
-            width: 32,
-            height: 32,
-            objectFit: 'contain',
-            mr: 1.5,
-            filter: isUsedElsewhere && !isSelected ? 'grayscale(100%)' : 'none',
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            bgcolor: 'white',
+            border: 2,
+            borderColor: isUsedElsewhere ? 'grey.300' : team.color_primary,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 1,
+            flexShrink: 0,
           }}
-        />
-        <Typography 
-          variant="body1" 
-          fontWeight={isSelected || isWinner ? 700 : 500}
-          sx={{ flexGrow: 1, textAlign: 'left' }}
         >
-          {team.short_name}
-        </Typography>
-        
-        {/* Score or Status */}
-        {(isComplete || isLive) && score !== null ? (
-          <Typography variant="body1" fontWeight={700}>
+          <Box
+            component="img"
+            src={team.logo}
+            alt={team.abbreviation}
+            sx={{
+              width: 30,
+              height: 30,
+              objectFit: 'contain',
+              filter: isUsedElsewhere ? 'grayscale(100%)' : 'none',
+            }}
+          />
+        </Box>
+
+        {/* Team Name */}
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography 
+            variant="body1" 
+            fontWeight={isSelected ? 700 : 500}
+            color={isUsedElsewhere ? 'text.disabled' : 'text.primary'}
+            noWrap
+          >
+            {team.short_name}
+          </Typography>
+          {isUsedElsewhere && (
+            <Typography variant="caption" color="text.disabled">
+              Already used
+            </Typography>
+          )}
+        </Box>
+
+        {/* Score (if game started) */}
+        {(isComplete || isLive) && score !== null && (
+          <Typography 
+            variant="h5" 
+            fontWeight={700}
+            color={
+              isSelected 
+                ? (isFinalWin || isWinning ? 'success.main' : 'error.main')
+                : 'text.primary'
+            }
+          >
             {score}
           </Typography>
-        ) : isUsedElsewhere ? (
-          <Typography variant="caption" color="text.disabled" sx={{ ml: 1 }}>
-            USED
-          </Typography>
-        ) : isSelected && isLocked ? (
-          <CheckCircle fontSize="small" sx={{ opacity: 0.8 }} />
+        )}
+
+        {/* Status chip or action icon */}
+        {status ? (
+          <Chip
+            icon={status.icon || undefined}
+            label={status.label}
+            size="small"
+            color={status.color}
+            variant={status.color === 'default' ? 'outlined' : 'filled'}
+            sx={{ height: 24, fontSize: 11 }}
+          />
+        ) : canSelect ? (
+          <AddCircle color="primary" />
+        ) : !isComplete && !isLive ? (
+          <Lock color="disabled" sx={{ fontSize: 20 }} />
         ) : null}
-      </ButtonBase>
+      </Box>
     );
   };
 
   return (
-    <Paper 
-      elevation={selectedTeamId ? 2 : 1} 
-      sx={{ 
+    <Paper
+      elevation={selectedTeamId ? 2 : 1}
+      sx={{
+        borderRadius: 2,
         overflow: 'hidden',
-        border: selectedTeamId ? 2 : 0,
-        borderColor: 'primary.main',
+        border: selectedTeamId ? 2 : 1,
+        borderColor: selectedTeamId ? 'primary.main' : 'divider',
       }}
     >
-      {/* Game Time Header */}
+      {/* Game Header */}
       <Box 
         sx={{ 
-          px: 1.5, 
-          py: 0.75, 
-          bgcolor: isLive ? 'error.dark' : 'action.hover',
+          px: 2, 
+          py: 1, 
+          bgcolor: isLive ? 'error.main' : isComplete ? 'grey.800' : 'grey.100',
+          color: isLive || isComplete ? 'white' : 'text.secondary',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -148,21 +228,38 @@ export default function GameCard({
       >
         <Typography 
           variant="caption" 
-          color={isLive ? 'white' : 'text.secondary'}
-          fontWeight={isLive ? 600 : 400}
+          fontWeight={600}
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
         >
-          {isLive ? '🔴 LIVE' : isComplete ? 'FINAL' : formatGameTime()}
+          {isLive ? (
+            <>
+              <Circle sx={{ fontSize: 8 }} />
+              LIVE
+            </>
+          ) : (
+            <>
+              <Schedule sx={{ fontSize: 14 }} />
+              {isComplete ? 'FINAL' : formatGameTime()}
+            </>
+          )}
         </Typography>
         {isLocked && !isComplete && !isLive && (
-          <Lock fontSize="small" color="disabled" sx={{ fontSize: 14 }} />
+          <Lock sx={{ fontSize: 14, opacity: 0.7 }} />
         )}
       </Box>
 
-      {/* Teams */}
-      <Box sx={{ p: 0.5 }}>
-        <TeamRow team={game.away} isHome={false} />
-        <TeamRow team={game.home} isHome={true} />
-      </Box>
+      {/* Away Team */}
+      <TeamRow team={game.away} opponent={game.home} isHome={false} />
+      
+      {/* Divider with @ symbol */}
+      <Divider>
+        <Typography variant="caption" color="text.disabled" sx={{ px: 1 }}>
+          @
+        </Typography>
+      </Divider>
+
+      {/* Home Team */}
+      <TeamRow team={game.home} opponent={game.away} isHome={true} />
     </Paper>
   );
 }

@@ -59,6 +59,10 @@ type Pick = {
   locked_at: string | null;
 };
 
+type PickWithGame = Pick & {
+  game_status: string;
+};
+
 export default function PicksPage() {
   const router = useRouter();
   const theme = useTheme();
@@ -69,7 +73,7 @@ export default function PicksPage() {
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [games, setGames] = useState<Game[]>([]);
   const [allTeams, setAllTeams] = useState<Team[]>([]);
-  const [picks, setPicks] = useState<Pick[]>([]);
+  const [picks, setPicks] = useState<PickWithGame[]>([]);
   const [usedTeams, setUsedTeams] = useState<Set<string>>(new Set());
   const [activeLeagueSeasonId, setActiveLeagueSeasonId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -120,16 +124,23 @@ export default function PicksPage() {
       const week = nextGame?.week || 1;
       setSelectedWeek(week);
 
-      // Load all user picks for the season
+      // Load all user picks for the season with game status
       const { data: userPicks } = await supabase
         .from('picks_v2')
-        .select('*')
+        .select(`
+          *,
+          game:games(status)
+        `)
         .eq('league_season_id', leagueSeasonId)
         .eq('profile_id', user.id);
 
       if (userPicks) {
-        setPicks(userPicks);
-        setUsedTeams(new Set(userPicks.map((p) => p.team_id)));
+        const picksWithStatus = userPicks.map((p: any) => ({
+          ...p,
+          game_status: p.game?.status || 'UPCOMING',
+        }));
+        setPicks(picksWithStatus);
+        setUsedTeams(new Set(picksWithStatus.map((p) => p.team_id)));
       }
 
       setLoading(false);
@@ -204,10 +215,14 @@ export default function PicksPage() {
   const weekPicks = picks.filter((p) => p.week === selectedWeek);
   const weekPickCount = weekPicks.length;
 
-  // Build pickedTeams map for TeamGrid
-  const pickedTeams = new Map<string, { week: number; points: number }>();
+  // Build pickedTeams map for TeamGrid with game status
+  const pickedTeams = new Map<string, { week: number; points: number; status: string }>();
   picks.forEach((p) => {
-    pickedTeams.set(p.team_id, { week: p.week, points: p.points });
+    pickedTeams.set(p.team_id, { 
+      week: p.week, 
+      points: p.points,
+      status: p.game_status,
+    });
   });
 
   // Check if a specific pick is locked
@@ -298,7 +313,7 @@ export default function PicksPage() {
       if (insertError) {
         setError(insertError.message);
       } else if (newPick) {
-        setPicks([...picks, newPick]);
+        setPicks([...picks, { ...newPick, game_status: 'UPCOMING' }]);
         setUsedTeams((prev) => new Set([...prev, teamId]));
       }
     }
