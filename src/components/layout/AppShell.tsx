@@ -120,6 +120,7 @@ export default function AppShell({
   const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : Brightness4;
 
   const isPicksPage = pathname === '/picks';
+  const isPlayoffsPage = pathname === '/playoffs';
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -184,6 +185,20 @@ export default function AppShell({
             }}
           >
             Make Picks
+          </Button>
+
+          
+          <Button
+            color="inherit"
+            onClick={() => router.push('/playoffs')}
+            sx={{
+              ml: 2,
+              fontWeight: isPlayoffsPage ? 700 : 400,
+              borderBottom: isPlayoffsPage ? '2px solid white' : 'none',
+              borderRadius: 0,
+            }}
+          >
+            Playoffs
           </Button>
 
           <Box sx={{ flexGrow: 1 }} />
