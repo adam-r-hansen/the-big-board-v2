@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
   Box, 
@@ -59,9 +59,57 @@ export default function AppShell({
   const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const { mode, setMode } = useThemeMode();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [internalUserEmail, setInternalUserEmail] = useState<string | undefined>(userEmail);
+  const [internalLeagues, setInternalLeagues] = useState<LeagueInfo[]>(leagues);
+  const [internalActiveLeague, setInternalActiveLeague] = useState<LeagueInfo | null | undefined>(activeLeague);
   const [leagueAnchorEl, setLeagueAnchorEl] = useState<null | HTMLElement>(null);
 
   const supabase = createClient();
+
+  // Self-load data if props not provided
+  useEffect(() => {
+    const loadData = async () => {
+      if (!userEmail || leagues.length === 0) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setInternalUserEmail(user.email || undefined);
+          
+          const { data: participants } = await supabase
+            .from('league_season_participants_v2')
+            .select(`
+              id,
+              league_season_id,
+              league_seasons_v2 (
+                id,
+                league_id,
+                season,
+                leagues_v2 (
+                  id,
+                  name
+                )
+              )
+            `)
+            .eq('profile_id', user.id)
+            .eq('active', true);
+          
+          if (participants && participants.length > 0) {
+            const leagueInfos = participants.map((p: any) => ({
+              id: p.league_seasons_v2.id,
+              league_id: p.league_seasons_v2.league_id,
+              season: p.league_seasons_v2.season,
+              leagues_v2: p.league_seasons_v2.leagues_v2,
+            }));
+            setInternalLeagues(leagueInfos);
+            
+            const lastLeagueId = localStorage.getItem('activeLeagueSeasonId');
+            const lastLeague = leagueInfos.find((l: LeagueInfo) => l.id === lastLeagueId);
+            setInternalActiveLeague(lastLeague || leagueInfos[0]);
+          }
+        }
+      }
+    };
+    loadData();
+  }, [supabase, userEmail, leagues.length]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -72,7 +120,7 @@ export default function AppShell({
   };
 
   const handleLeagueMenu = (event: React.MouseEvent<HTMLElement>) => {
-    if (leagues.length > 1) {
+    if (internalLeagues.length > 1) {
       setLeagueAnchorEl(event.currentTarget);
     }
   };
@@ -87,6 +135,7 @@ export default function AppShell({
     
     // Call parent handler
     onLeagueChange?.(league);
+            setInternalActiveLeague(league);
     
     // Dispatch custom event for other components
     window.dispatchEvent(new CustomEvent('leagueChanged', { detail: league.id }));
@@ -136,16 +185,16 @@ export default function AppShell({
           </Typography>
 
           {/* League Switcher */}
-          {activeLeague && (
+          {internalActiveLeague && (
             <Button
               color="inherit"
               onClick={handleLeagueMenu}
-              endIcon={leagues.length > 1 ? <KeyboardArrowDown /> : undefined}
+              endIcon={internalLeagues.length > 1 ? <KeyboardArrowDown /> : undefined}
               sx={{ textTransform: 'none' }}
             >
-              {activeLeague.leagues_v2.name}
+              {internalActiveLeague?.leagues_v2?.name}
               <Chip 
-                label={activeLeague.season} 
+                label={internalActiveLeague?.season} 
                 size="small" 
                 sx={{ ml: 1, height: 20, bgcolor: 'rgba(255,255,255,0.2)' }} 
               />
@@ -157,7 +206,7 @@ export default function AppShell({
             open={Boolean(leagueAnchorEl)}
             onClose={handleLeagueClose}
           >
-            {leagues.map((league) => (
+            {internalLeagues.map((league) => (
               <MenuItem 
                 key={league.id}
                 onClick={() => handleLeagueSelect(league)}

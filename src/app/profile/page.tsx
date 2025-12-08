@@ -11,11 +11,11 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Divider,
   ToggleButtonGroup,
   ToggleButton,
 } from '@mui/material';
 import { LightMode, DarkMode, Brightness4 } from '@mui/icons-material';
+import AppShell from '@/components/layout/AppShell';
 import { createClient } from '@/lib/supabase/client';
 import { useThemeMode } from '@/theme/ThemeProvider';
 
@@ -121,132 +121,131 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <Container maxWidth="sm" sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Container>
+      <AppShell>
+        <Container maxWidth="sm" sx={{ py: 4, textAlign: 'center' }}>
+          <CircularProgress />
+        </Container>
+      </AppShell>
     );
   }
 
   return (
-    <Container maxWidth="sm" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Profile Settings
-      </Typography>
-
-      {message && (
-        <Alert severity={message.type} sx={{ mb: 3 }}>
-          {message.text}
-        </Alert>
-      )}
-
-      {/* Profile Info */}
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Profile
+    <AppShell>
+      <Container maxWidth="sm" sx={{ py: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          Profile Settings
         </Typography>
 
-        <Box component="form" onSubmit={handleSaveProfile}>
-          <TextField
-            label="Email"
-            fullWidth
-            disabled
-            value={email}
-            sx={{ mb: 2 }}
-          />
+        {message && (
+          <Alert severity={message.type} sx={{ mb: 3 }}>
+            {message.text}
+          </Alert>
+        )}
 
-          <TextField
-            label="Display Name"
-            fullWidth
-            required
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            inputProps={{ maxLength: 50 }}
-            sx={{ mb: 2 }}
-          />
+        {/* Profile Info */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Profile
+          </Typography>
 
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Profile Color
-            </Typography>
-            <input
-              type="color"
-              value={profileColor}
-              onChange={(e) => setProfileColor(e.target.value)}
-              style={{ width: 60, height: 40, cursor: 'pointer', border: 'none' }}
+          <Box component="form" onSubmit={handleSaveProfile}>
+            <TextField
+              label="Email"
+              fullWidth
+              disabled
+              value={email}
+              sx={{ mb: 2 }}
             />
-          </Box>
 
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Theme Preference
-            </Typography>
-            <ToggleButtonGroup
-              value={mode}
-              exclusive
-              onChange={(_, v) => v && setMode(v)}
-              size="small"
+            <TextField
+              label="Display Name"
+              fullWidth
+              required
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              inputProps={{ maxLength: 50 }}
+              sx={{ mb: 2 }}
+            />
+
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Profile Color
+              </Typography>
+              <input
+                type="color"
+                value={profileColor}
+                onChange={(e) => setProfileColor(e.target.value)}
+                style={{ width: 60, height: 40, cursor: 'pointer', border: 'none' }}
+              />
+            </Box>
+
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Theme Preference
+              </Typography>
+              <ToggleButtonGroup
+                value={mode}
+                exclusive
+                onChange={(_, v) => v && setMode(v)}
+                size="small"
+              >
+                <ToggleButton value="light">
+                  <LightMode sx={{ mr: 1 }} /> Light
+                </ToggleButton>
+                <ToggleButton value="dark">
+                  <DarkMode sx={{ mr: 1 }} /> Dark
+                </ToggleButton>
+                <ToggleButton value="auto">
+                  <Brightness4 sx={{ mr: 1 }} /> Auto
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={saving}
             >
-              <ToggleButton value="light">
-                <LightMode sx={{ mr: 1 }} /> Light
-              </ToggleButton>
-              <ToggleButton value="dark">
-                <DarkMode sx={{ mr: 1 }} /> Dark
-              </ToggleButton>
-              <ToggleButton value="auto">
-                <Brightness4 sx={{ mr: 1 }} /> Auto
-              </ToggleButton>
-            </ToggleButtonGroup>
+              {saving ? <CircularProgress size={24} /> : 'Save Profile'}
+            </Button>
           </Box>
+        </Paper>
 
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={saving}
-          >
-            {saving ? <CircularProgress size={24} /> : 'Save Profile'}
-          </Button>
-        </Box>
-      </Paper>
+        {/* Password Change */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Change Password
+          </Typography>
 
-      {/* Password Change */}
-      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Change Password
-        </Typography>
+          <Box component="form" onSubmit={handleChangePassword}>
+            <TextField
+              label="New Password"
+              type="password"
+              fullWidth
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              sx={{ mb: 2 }}
+            />
 
-        <Box component="form" onSubmit={handleChangePassword}>
-          <TextField
-            label="New Password"
-            type="password"
-            fullWidth
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            sx={{ mb: 2 }}
-          />
+            <TextField
+              label="Confirm Password"
+              type="password"
+              fullWidth
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              sx={{ mb: 2 }}
+            />
 
-          <TextField
-            label="Confirm Password"
-            type="password"
-            fullWidth
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-
-          <Button
-            type="submit"
-            variant="outlined"
-            disabled={saving || !newPassword || !confirmPassword}
-          >
-            {saving ? <CircularProgress size={24} /> : 'Update Password'}
-          </Button>
-        </Box>
-      </Paper>
-
-      {/* Back Button */}
-      <Button variant="text" onClick={() => router.push('/')}>
-        ← Back to Dashboard
-      </Button>
-    </Container>
+            <Button
+              type="submit"
+              variant="outlined"
+              disabled={saving || !newPassword || !confirmPassword}
+            >
+              {saving ? <CircularProgress size={24} /> : 'Update Password'}
+            </Button>
+          </Box>
+        </Paper>
+      </Container>
+    </AppShell>
   );
 }

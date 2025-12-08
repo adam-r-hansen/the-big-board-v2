@@ -13,6 +13,7 @@ import {
   Button,
 } from '@mui/material';
 import { Lock, LockOpen, Timer, EmojiEvents, Check } from '@mui/icons-material';
+import AppShell from '@/components/layout/AppShell';
 import { createClient } from '@/lib/supabase/client';
 import {
   generateUnlockSchedule,
@@ -211,17 +212,21 @@ export default function PlayoffsPage() {
 
   if (loading) {
     return (
-      <Container sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Container>
+      <AppShell>
+        <Container sx={{ py: 4, textAlign: 'center' }}>
+          <CircularProgress />
+        </Container>
+      </AppShell>
     );
   }
 
   if (!round) {
     return (
-      <Container sx={{ py: 4 }}>
-        <Alert severity="info">{error || 'No active playoff round.'}</Alert>
-      </Container>
+      <AppShell>
+        <Container sx={{ py: 4 }}>
+          <Alert severity="info">{error || 'No active playoff round.'}</Alert>
+        </Container>
+      </AppShell>
     );
   }
 
@@ -238,249 +243,251 @@ export default function PlayoffsPage() {
   const unlockedPositions = getUnlockedPositions();
 
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Stack direction="row" alignItems="center" spacing={2}>
-          <EmojiEvents sx={{ fontSize: 40, color: 'warning.main' }} />
-          <Box>
-            <Typography variant="h4" fontWeight={700}>
-              {round.round_type === 'semifinal' ? 'Semifinals' : 'Championship'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Week {round.week} • {draftComplete ? 'Open Swaps' : 'Draft in Progress'}
-            </Typography>
-          </Box>
-          {participant && (
-            <Chip label={`Seed #${participant.seed}`} color="primary" sx={{ ml: 'auto' }} />
-          )}
-        </Stack>
-      </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Playoff Teams Status */}
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          Playoff Teams
-        </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
-          {allParticipants.filter(p => p.seed <= 4).map((p) => {
-            const theirPicks = allPicks.filter(pick => pick.profile_id === p.profile_id);
-            const isMe = p.profile_id === participant?.profile_id;
-
-            return (
-              <Paper
-                key={p.id}
-                variant="outlined"
-                sx={{
-                  p: 2,
-                  bgcolor: isMe ? 'primary.50' : 'background.paper',
-                  border: isMe ? 2 : 1,
-                  borderColor: isMe ? 'primary.main' : 'divider',
-                }}
-              >
-                <Typography variant="subtitle2" fontWeight={700}>
-                  #{p.seed} {p.profile?.display_name || p.profile?.email?.split('@')[0]}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {theirPicks.length}/{p.picks_available} picks
-                </Typography>
-                <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
-                  {[1, 2, 3, 4].map(pos => {
-                    const pick = theirPicks.find(pk => pk.pick_position === pos);
-                    const unlocked = isPickUnlocked(schedule, p.seed, pos, now);
-
-                    return (
-                      <Box
-                        key={pos}
-                        sx={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          border: 1,
-                          borderColor: pick ? pick.team?.color_primary : 'divider',
-                          bgcolor: pick ? pick.team?.color_primary : (unlocked ? 'success.light' : 'grey.200'),
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        {pick ? (
-                          <Typography variant="caption" sx={{ color: 'white', fontSize: 10 }}>
-                            {pick.team?.abbreviation?.slice(0, 2)}
-                          </Typography>
-                        ) : unlocked ? (
-                          <LockOpen sx={{ fontSize: 12, color: 'success.dark' }} />
-                        ) : (
-                          <Lock sx={{ fontSize: 12, color: 'grey.500' }} />
-                        )}
-                      </Box>
-                    );
-                  })}
-                </Stack>
-              </Paper>
-            );
-          })}
+    <AppShell>
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        {/* Header */}
+        <Box sx={{ mb: 3 }}>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <EmojiEvents sx={{ fontSize: 40, color: 'warning.main' }} />
+            <Box>
+              <Typography variant="h4" fontWeight={700}>
+                {round.round_type === 'semifinal' ? 'Semifinals' : 'Championship'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Week {round.week} • {draftComplete ? 'Open Swaps' : 'Draft in Progress'}
+              </Typography>
+            </Box>
+            {participant && (
+              <Chip label={`Seed #${participant.seed}`} color="primary" sx={{ ml: 'auto' }} />
+            )}
+          </Stack>
         </Box>
-      </Paper>
 
-      {/* My Pick Slots */}
-      {participant && (
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        {/* Playoff Teams Status */}
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            Your Picks
+            Playoff Teams
           </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
-            {[1, 2, 3, 4].map(pos => {
-              const pick = myPicks.find(p => p.pick_position === pos);
-              const unlocked = unlockedPositions.includes(pos);
-              const nextUnlock = schedule.find(w => w.seed === participant.seed && w.pickPosition === pos);
+            {allParticipants.filter(p => p.seed <= 4).map((p) => {
+              const theirPicks = allPicks.filter(pick => pick.profile_id === p.profile_id);
+              const isMe = p.profile_id === participant?.profile_id;
 
               return (
                 <Paper
-                  key={pos}
+                  key={p.id}
                   variant="outlined"
                   sx={{
                     p: 2,
-                    height: 120,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: pick ? 'success.50' : (unlocked ? 'background.paper' : 'grey.100'),
-                    border: 2,
-                    borderColor: pick ? pick.team?.color_primary : (unlocked ? 'success.main' : 'grey.300'),
+                    bgcolor: isMe ? 'primary.50' : 'background.paper',
+                    border: isMe ? 2 : 1,
+                    borderColor: isMe ? 'primary.main' : 'divider',
                   }}
                 >
-                  {pick ? (
-                    <>
-                      <Box
-                        component="img"
-                        src={pick.team?.logo}
-                        alt={pick.team?.abbreviation}
-                        sx={{ width: 40, height: 40, mb: 1 }}
-                      />
-                      <Typography variant="body2" fontWeight={600}>
-                        {pick.team?.short_name}
-                      </Typography>
-                    </>
-                  ) : unlocked ? (
-                    <>
-                      <LockOpen color="success" sx={{ mb: 1 }} />
-                      <Typography variant="body2" color="success.main">
-                        Pick {pos} - Ready
-                      </Typography>
-                    </>
-                  ) : (
-                    <>
-                      <Lock color="disabled" sx={{ mb: 1 }} />
-                      <Typography variant="body2" color="text.disabled">
-                        Pick {pos}
-                      </Typography>
-                      {nextUnlock && (
-                        <Typography variant="caption" color="text.secondary">
-                          <Timer sx={{ fontSize: 12, mr: 0.5 }} />
-                          {getTimeUntilUnlock(nextUnlock.unlockTime, now)}
-                        </Typography>
-                      )}
-                    </>
-                  )}
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    #{p.seed} {p.profile?.display_name || p.profile?.email?.split('@')[0]}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {theirPicks.length}/{p.picks_available} picks
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+                    {[1, 2, 3, 4].map(pos => {
+                      const pick = theirPicks.find(pk => pk.pick_position === pos);
+                      const unlocked = isPickUnlocked(schedule, p.seed, pos, now);
+
+                      return (
+                        <Box
+                          key={pos}
+                          sx={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: '50%',
+                            border: 1,
+                            borderColor: pick ? pick.team?.color_primary : 'divider',
+                            bgcolor: pick ? pick.team?.color_primary : (unlocked ? 'success.light' : 'grey.200'),
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {pick ? (
+                            <Typography variant="caption" sx={{ color: 'white', fontSize: 10 }}>
+                              {pick.team?.abbreviation?.slice(0, 2)}
+                            </Typography>
+                          ) : unlocked ? (
+                            <LockOpen sx={{ fontSize: 12, color: 'success.dark' }} />
+                          ) : (
+                            <Lock sx={{ fontSize: 12, color: 'grey.500' }} />
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
                 </Paper>
               );
             })}
           </Box>
         </Paper>
-      )}
 
-      {/* Games Grid */}
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          Week {round.week} Games
-        </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-          {games.map(game => {
-            const isTaken = takenGameIds.has(game.id);
-            const myPickForGame = myPicks.find(p => p.game_id === game.id);
-            const gameStarted = new Date(game.game_utc) <= now;
-            const canPick = !isTaken && !gameStarted && unlockedPositions.length > myPicks.length;
+        {/* My Pick Slots */}
+        {participant && (
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+              Your Picks
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+              {[1, 2, 3, 4].map(pos => {
+                const pick = myPicks.find(p => p.pick_position === pos);
+                const unlocked = unlockedPositions.includes(pos);
+                const nextUnlock = schedule.find(w => w.seed === participant.seed && w.pickPosition === pos);
 
-            return (
-              <Paper
-                key={game.id}
-                variant="outlined"
-                sx={{
-                  p: 2,
-                  opacity: isTaken || gameStarted ? 0.5 : 1,
-                  bgcolor: myPickForGame ? 'success.50' : 'background.paper',
-                }}
-              >
-                <Typography variant="caption" color="text.secondary">
-                  {new Date(game.game_utc).toLocaleString('en-US', {
-                    weekday: 'short',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                  {isTaken && ' • Taken'}
-                  {gameStarted && ' • Started'}
-                </Typography>
-
-                <Stack spacing={1} sx={{ mt: 1 }}>
-                  <Button
-                    variant={myPickForGame?.team_id === game.away.id ? 'contained' : 'outlined'}
-                    disabled={!canPick && myPickForGame?.team_id !== game.away.id}
-                    onClick={() => handlePick(game.id, game.away.id, myPicks.length + 1)}
+                return (
+                  <Paper
+                    key={pos}
+                    variant="outlined"
                     sx={{
-                      justifyContent: 'flex-start',
-                      borderColor: game.away.color_primary,
-                      color: myPickForGame?.team_id === game.away.id ? 'white' : game.away.color_primary,
-                      bgcolor: myPickForGame?.team_id === game.away.id ? game.away.color_primary : 'transparent',
-                      '&:hover': {
-                        bgcolor: myPickForGame?.team_id === game.away.id ? game.away.color_primary : `${game.away.color_primary}20`,
-                      },
+                      p: 2,
+                      height: 120,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: pick ? 'success.50' : (unlocked ? 'background.paper' : 'grey.100'),
+                      border: 2,
+                      borderColor: pick ? pick.team?.color_primary : (unlocked ? 'success.main' : 'grey.300'),
                     }}
-                    startIcon={
-                      <Box component="img" src={game.away.logo} sx={{ width: 24, height: 24 }} />
-                    }
                   >
-                    {game.away.short_name}
-                    {myPickForGame?.team_id === game.away.id && <Check sx={{ ml: 'auto' }} />}
-                  </Button>
+                    {pick ? (
+                      <>
+                        <Box
+                          component="img"
+                          src={pick.team?.logo}
+                          alt={pick.team?.abbreviation}
+                          sx={{ width: 40, height: 40, mb: 1 }}
+                        />
+                        <Typography variant="body2" fontWeight={600}>
+                          {pick.team?.short_name}
+                        </Typography>
+                      </>
+                    ) : unlocked ? (
+                      <>
+                        <LockOpen color="success" sx={{ mb: 1 }} />
+                        <Typography variant="body2" color="success.main">
+                          Pick {pos} - Ready
+                        </Typography>
+                      </>
+                    ) : (
+                      <>
+                        <Lock color="disabled" sx={{ mb: 1 }} />
+                        <Typography variant="body2" color="text.disabled">
+                          Pick {pos}
+                        </Typography>
+                        {nextUnlock && (
+                          <Typography variant="caption" color="text.secondary">
+                            <Timer sx={{ fontSize: 12, mr: 0.5 }} />
+                            {getTimeUntilUnlock(nextUnlock.unlockTime, now)}
+                          </Typography>
+                        )}
+                      </>
+                    )}
+                  </Paper>
+                );
+              })}
+            </Box>
+          </Paper>
+        )}
 
-                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-                    @
+        {/* Games Grid */}
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+            Week {round.week} Games
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+            {games.map(game => {
+              const isTaken = takenGameIds.has(game.id);
+              const myPickForGame = myPicks.find(p => p.game_id === game.id);
+              const gameStarted = new Date(game.game_utc) <= now;
+              const canPick = !isTaken && !gameStarted && unlockedPositions.length > myPicks.length;
+
+              return (
+                <Paper
+                  key={game.id}
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    opacity: isTaken || gameStarted ? 0.5 : 1,
+                    bgcolor: myPickForGame ? 'success.50' : 'background.paper',
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(game.game_utc).toLocaleString('en-US', {
+                      weekday: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                    {isTaken && ' • Taken'}
+                    {gameStarted && ' • Started'}
                   </Typography>
 
-                  <Button
-                    variant={myPickForGame?.team_id === game.home.id ? 'contained' : 'outlined'}
-                    disabled={!canPick && myPickForGame?.team_id !== game.home.id}
-                    onClick={() => handlePick(game.id, game.home.id, myPicks.length + 1)}
-                    sx={{
-                      justifyContent: 'flex-start',
-                      borderColor: game.home.color_primary,
-                      color: myPickForGame?.team_id === game.home.id ? 'white' : game.home.color_primary,
-                      bgcolor: myPickForGame?.team_id === game.home.id ? game.home.color_primary : 'transparent',
-                      '&:hover': {
-                        bgcolor: myPickForGame?.team_id === game.home.id ? game.home.color_primary : `${game.home.color_primary}20`,
-                      },
-                    }}
-                    startIcon={
-                      <Box component="img" src={game.home.logo} sx={{ width: 24, height: 24 }} />
-                    }
-                  >
-                    {game.home.short_name}
-                    {myPickForGame?.team_id === game.home.id && <Check sx={{ ml: 'auto' }} />}
-                  </Button>
-                </Stack>
-              </Paper>
-            );
-          })}
-        </Box>
-      </Paper>
-    </Container>
+                  <Stack spacing={1} sx={{ mt: 1 }}>
+                    <Button
+                      variant={myPickForGame?.team_id === game.away.id ? 'contained' : 'outlined'}
+                      disabled={!canPick && myPickForGame?.team_id !== game.away.id}
+                      onClick={() => handlePick(game.id, game.away.id, myPicks.length + 1)}
+                      sx={{
+                        justifyContent: 'flex-start',
+                        borderColor: game.away.color_primary,
+                        color: myPickForGame?.team_id === game.away.id ? 'white' : game.away.color_primary,
+                        bgcolor: myPickForGame?.team_id === game.away.id ? game.away.color_primary : 'transparent',
+                        '&:hover': {
+                          bgcolor: myPickForGame?.team_id === game.away.id ? game.away.color_primary : `${game.away.color_primary}20`,
+                        },
+                      }}
+                      startIcon={
+                        <Box component="img" src={game.away.logo} sx={{ width: 24, height: 24 }} />
+                      }
+                    >
+                      {game.away.short_name}
+                      {myPickForGame?.team_id === game.away.id && <Check sx={{ ml: 'auto' }} />}
+                    </Button>
+
+                    <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+                      @
+                    </Typography>
+
+                    <Button
+                      variant={myPickForGame?.team_id === game.home.id ? 'contained' : 'outlined'}
+                      disabled={!canPick && myPickForGame?.team_id !== game.home.id}
+                      onClick={() => handlePick(game.id, game.home.id, myPicks.length + 1)}
+                      sx={{
+                        justifyContent: 'flex-start',
+                        borderColor: game.home.color_primary,
+                        color: myPickForGame?.team_id === game.home.id ? 'white' : game.home.color_primary,
+                        bgcolor: myPickForGame?.team_id === game.home.id ? game.home.color_primary : 'transparent',
+                        '&:hover': {
+                          bgcolor: myPickForGame?.team_id === game.home.id ? game.home.color_primary : `${game.home.color_primary}20`,
+                        },
+                      }}
+                      startIcon={
+                        <Box component="img" src={game.home.logo} sx={{ width: 24, height: 24 }} />
+                      }
+                    >
+                      {game.home.short_name}
+                      {myPickForGame?.team_id === game.home.id && <Check sx={{ ml: 'auto' }} />}
+                    </Button>
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </Box>
+        </Paper>
+      </Container>
+    </AppShell>
   );
 }

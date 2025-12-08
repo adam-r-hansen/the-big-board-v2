@@ -21,6 +21,7 @@ import {
   Tab,
 } from '@mui/material';
 import { Check, Stars } from '@mui/icons-material';
+import AppShell from '@/components/layout/AppShell';
 import { createClient } from '@/lib/supabase/client';
 import GameCard from '@/components/picks/GameCard';
 import TeamGrid from '@/components/picks/TeamGrid';
@@ -403,14 +404,6 @@ export default function PicksPage() {
     setSaving(false);
   };
 
-  if (loading) {
-    return (
-      <Container sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Container>
-    );
-  }
-
   // Games Panel Content
   const GamesPanel = () => (
     <Box>
@@ -495,89 +488,103 @@ export default function PicksPage() {
     <TeamGrid teams={allTeams} pickedTeams={pickedTeams} />
   );
 
+  if (loading) {
+    return (
+      <AppShell>
+        <Container sx={{ py: 4, textAlign: 'center' }}>
+          <CircularProgress />
+        </Container>
+      </AppShell>
+    );
+  }
+
   // Mobile Layout
   if (isMobile) {
     return (
-      <Container maxWidth="sm" sx={{ py: 2, pb: 10 }}>
-        <Typography variant="h5" gutterBottom>
-          Make Your Picks
-        </Typography>
+      <AppShell>
+        <Container maxWidth="sm" sx={{ py: 2, pb: 10 }}>
+          <Typography variant="h5" gutterBottom>
+            Make Your Picks
+          </Typography>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
 
-        {mobileTab === 0 ? <GamesPanel /> : <TeamsPanel />}
+          {mobileTab === 0 ? <GamesPanel /> : <TeamsPanel />}
 
-        {/* Bottom Tabs */}
-        <Paper
-          sx={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 1000,
-          }}
-          elevation={3}
-        >
-          <Tabs
-            value={mobileTab}
-            onChange={(_, v) => setMobileTab(v)}
-            variant="fullWidth"
+          {/* Bottom Tabs */}
+          <Paper
+            sx={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 1000,
+            }}
+            elevation={3}
           >
-            <Tab label="Pick" />
-            <Tab label="My Teams" />
-          </Tabs>
-        </Paper>
-      </Container>
+            <Tabs
+              value={mobileTab}
+              onChange={(_, v) => setMobileTab(v)}
+              variant="fullWidth"
+            >
+              <Tab label="Pick" />
+              <Tab label="My Teams" />
+            </Tabs>
+          </Paper>
+        </Container>
+      </AppShell>
     );
   }
 
   // Desktop Layout - 40/60 split
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
-      {error && (
-        <Alert 
-          severity="error" 
-          sx={{ position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 1000 }} 
-          onClose={() => setError(null)}
+    <AppShell>
+      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+        {error && (
+          <Alert 
+            severity="error" 
+            sx={{ position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 1000 }} 
+            onClose={() => setError(null)}
+          >
+            {error}
+          </Alert>
+        )}
+
+        {/* Left Panel - 40% - Games */}
+        <Box
+          sx={{
+            width: '40%',
+            p: 3,
+            overflow: 'auto',
+            borderRight: 1,
+            borderColor: 'divider',
+          }}
         >
-          {error}
-        </Alert>
-      )}
+          <Typography variant="h5" gutterBottom>
+            Make Your Picks
+          </Typography>
+          <GamesPanel />
+        </Box>
 
-      {/* Left Panel - 40% - Games */}
-      <Box
-        sx={{
-          width: '40%',
-          p: 3,
-          overflow: 'auto',
-          borderRight: 1,
-          borderColor: 'divider',
-        }}
-      >
-        <Typography variant="h5" gutterBottom>
-          Make Your Picks
-        </Typography>
-        <GamesPanel />
+        {/* Right Panel - 60% - Team Grid */}
+        <Box
+          sx={{
+            width: '60%',
+            p: 3,
+            overflow: 'auto',
+            bgcolor: 'background.default',
+          }}
+        >
+          <Typography variant="h5" gutterBottom>
+            Your Season
+          </Typography>
+          <TeamsPanel />
+        </Box>
       </Box>
-
-      {/* Right Panel - 60% - Team Grid */}
-      <Box
-        sx={{
-          width: '60%',
-          p: 3,
-          overflow: 'auto',
-          bgcolor: 'background.default',
-        }}
-      >
-        <Typography variant="h5" gutterBottom>
-          Your Season
-        </Typography>
-        <TeamsPanel />
-      </Box>
-    </Box>
+    </AppShell>
   );
 }
