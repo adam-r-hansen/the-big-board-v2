@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import { Delete, Add, ArrowBack } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
+import AppShell from '@/components/layout/AppShell';
 import { createClient } from '@/lib/supabase/client';
 
 type Team = {
@@ -233,217 +234,221 @@ export default function WrinklesAdminPage() {
 
   if (loading) {
     return (
-      <Container sx={{ py: 4, textAlign: 'center' }}>
-        <CircularProgress />
-      </Container>
+      <AppShell>
+        <Container sx={{ py: 4, textAlign: 'center' }}>
+          <CircularProgress />
+        </Container>
+      </AppShell>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Button 
-        startIcon={<ArrowBack />} 
-        onClick={() => router.push('/admin')}
-        sx={{ mb: 2 }}
-      >
-        Back to Admin
-      </Button>
+    <AppShell>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Button 
+          startIcon={<ArrowBack />} 
+          onClick={() => router.push('/admin')}
+          sx={{ mb: 2 }}
+        >
+          Back to Admin
+        </Button>
 
-      <Typography variant="h4" gutterBottom>
-        Wrinkles Admin
-      </Typography>
+        <Typography variant="h4" gutterBottom>
+          Wrinkles Admin
+        </Typography>
 
-      {message && (
-        <Alert severity={message.type} sx={{ mb: 3 }} onClose={() => setMessage(null)}>
-          {message.text}
-        </Alert>
-      )}
+        {message && (
+          <Alert severity={message.type} sx={{ mb: 3 }} onClose={() => setMessage(null)}>
+            {message.text}
+          </Alert>
+        )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-        {/* Create Wrinkle Form */}
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Create Wrinkle
-          </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+          {/* Create Wrinkle Form */}
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Create Wrinkle
+            </Typography>
 
-          <Box component="form" onSubmit={handleCreate}>
-            <Stack spacing={2}>
-              {/* League Selection */}
-              <FormControl fullWidth size="small">
-                <InputLabel>League</InputLabel>
-                <Select
-                  value={selectedLeague}
-                  label="League"
-                  onChange={(e) => setSelectedLeague(e.target.value)}
-                >
-                  {leagues.map((ls) => (
-                    <MenuItem key={ls.id} value={ls.id}>
-                      {ls.leagues_v2?.name} ({ls.season})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Box component="form" onSubmit={handleCreate}>
+              <Stack spacing={2}>
+                {/* League Selection */}
+                <FormControl fullWidth size="small">
+                  <InputLabel>League</InputLabel>
+                  <Select
+                    value={selectedLeague}
+                    label="League"
+                    onChange={(e) => setSelectedLeague(e.target.value)}
+                  >
+                    {leagues.map((ls) => (
+                      <MenuItem key={ls.id} value={ls.id}>
+                        {ls.leagues_v2?.name} ({ls.season})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              {/* Week */}
-              <FormControl fullWidth size="small">
-                <InputLabel>Week</InputLabel>
-                <Select
-                  value={week}
-                  label="Week"
-                  onChange={(e) => setWeek(Number(e.target.value))}
-                >
-                  {Array.from({ length: 18 }, (_, i) => (
-                    <MenuItem key={i + 1} value={i + 1}>
-                      Week {i + 1}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                {/* Week */}
+                <FormControl fullWidth size="small">
+                  <InputLabel>Week</InputLabel>
+                  <Select
+                    value={week}
+                    label="Week"
+                    onChange={(e) => setWeek(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 18 }, (_, i) => (
+                      <MenuItem key={i + 1} value={i + 1}>
+                        Week {i + 1}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              {/* Wrinkle Type */}
-              <FormControl fullWidth size="small">
-                <InputLabel>Type</InputLabel>
-                <Select
-                  value={kind}
-                  label="Type"
-                  onChange={(e) => setKind(e.target.value)}
-                >
-                  {WRINKLE_TYPES.map((type) => (
-                    <MenuItem key={type.value} value={type.value}>
-                      {type.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                {/* Wrinkle Type */}
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={kind}
+                    label="Type"
+                    onChange={(e) => setKind(e.target.value)}
+                  >
+                    {WRINKLE_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>
+                        {type.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              <Typography variant="caption" color="text.secondary">
-                {WRINKLE_TYPES.find(t => t.value === kind)?.description}
-              </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {WRINKLE_TYPES.find(t => t.value === kind)?.description}
+                </Typography>
 
-              {/* Name */}
-              <TextField
-                label="Wrinkle Name"
-                size="small"
-                fullWidth
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Sunday Night Bonus"
-              />
+                {/* Name */}
+                <TextField
+                  label="Wrinkle Name"
+                  size="small"
+                  fullWidth
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Sunday Night Bonus"
+                />
 
-              {/* Game Selection */}
-              <Autocomplete
-                options={games}
-                getOptionLabel={getGameLabel}
-                value={selectedGame}
-                onChange={(_, value) => setSelectedGame(value)}
-                renderInput={(params) => (
-                  <TextField {...params} label="Game" size="small" required />
+                {/* Game Selection */}
+                <Autocomplete
+                  options={games}
+                  getOptionLabel={getGameLabel}
+                  value={selectedGame}
+                  onChange={(_, value) => setSelectedGame(value)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Game" size="small" required />
+                  )}
+                />
+
+                {/* ATS: Spread */}
+                {kind === 'bonus_game_ats' && selectedGame && (
+                  <>
+                    <TextField
+                      label="Spread"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      value={spread ?? ''}
+                      onChange={(e) => setSpread(Number(e.target.value))}
+                      placeholder="-3.5"
+                      inputProps={{ step: 0.5 }}
+                    />
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Favorite</InputLabel>
+                      <Select
+                        value={spreadTeam}
+                        label="Favorite"
+                        onChange={(e) => setSpreadTeam(e.target.value)}
+                      >
+                        <MenuItem value={selectedGame.home.id}>
+                          {selectedGame.home.short_name}
+                        </MenuItem>
+                        <MenuItem value={selectedGame.away.id}>
+                          {selectedGame.away.short_name}
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+                  </>
                 )}
-              />
 
-              {/* ATS: Spread */}
-              {kind === 'bonus_game_ats' && selectedGame && (
-                <>
+                {/* O/U: Total */}
+                {kind === 'bonus_game_ou' && (
                   <TextField
-                    label="Spread"
+                    label="Total Points Line"
                     type="number"
                     size="small"
                     fullWidth
-                    value={spread ?? ''}
-                    onChange={(e) => setSpread(Number(e.target.value))}
-                    placeholder="-3.5"
+                    value={overUnderTotal ?? ''}
+                    onChange={(e) => setOverUnderTotal(Number(e.target.value))}
+                    placeholder="45.5"
                     inputProps={{ step: 0.5 }}
                   />
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Favorite</InputLabel>
-                    <Select
-                      value={spreadTeam}
-                      label="Favorite"
-                      onChange={(e) => setSpreadTeam(e.target.value)}
-                    >
-                      <MenuItem value={selectedGame.home.id}>
-                        {selectedGame.home.short_name}
-                      </MenuItem>
-                      <MenuItem value={selectedGame.away.id}>
-                        {selectedGame.away.short_name}
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                </>
-              )}
+                )}
 
-              {/* O/U: Total */}
-              {kind === 'bonus_game_ou' && (
-                <TextField
-                  label="Total Points Line"
-                  type="number"
-                  size="small"
-                  fullWidth
-                  value={overUnderTotal ?? ''}
-                  onChange={(e) => setOverUnderTotal(Number(e.target.value))}
-                  placeholder="45.5"
-                  inputProps={{ step: 0.5 }}
-                />
-              )}
-
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={saving || !selectedGame || !name}
-                startIcon={saving ? <CircularProgress size={20} /> : <Add />}
-              >
-                Create Wrinkle
-              </Button>
-            </Stack>
-          </Box>
-        </Paper>
-
-        {/* Existing Wrinkles */}
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Existing Wrinkles
-          </Typography>
-
-          {wrinkles.length === 0 ? (
-            <Typography color="text.secondary">No wrinkles yet</Typography>
-          ) : (
-            <List>
-              {wrinkles.map((wrinkle) => (
-                <ListItem
-                  key={wrinkle.id}
-                  divider
-                  secondaryAction={
-                    <IconButton edge="end" onClick={() => handleDelete(wrinkle.id)}>
-                      <Delete />
-                    </IconButton>
-                  }
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={saving || !selectedGame || !name}
+                  startIcon={saving ? <CircularProgress size={20} /> : <Add />}
                 >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {wrinkle.name}
-                        <Chip
-                          label={WRINKLE_TYPES.find(t => t.value === wrinkle.kind)?.label}
-                          size="small"
-                          color="secondary"
-                        />
-                      </Box>
+                  Create Wrinkle
+                </Button>
+              </Stack>
+            </Box>
+          </Paper>
+
+          {/* Existing Wrinkles */}
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Existing Wrinkles
+            </Typography>
+
+            {wrinkles.length === 0 ? (
+              <Typography color="text.secondary">No wrinkles yet</Typography>
+            ) : (
+              <List>
+                {wrinkles.map((wrinkle) => (
+                  <ListItem
+                    key={wrinkle.id}
+                    divider
+                    secondaryAction={
+                      <IconButton edge="end" onClick={() => handleDelete(wrinkle.id)}>
+                        <Delete />
+                      </IconButton>
                     }
-                    secondary={
-                      <>
-                        Week {wrinkle.week}
-                        {wrinkle.game && ` • ${wrinkle.game.away.abbreviation} @ ${wrinkle.game.home.abbreviation}`}
-                        {wrinkle.spread && ` • Spread: ${wrinkle.spread}`}
-                      </>
-                    }
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </Paper>
-      </Box>
-    </Container>
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {wrinkle.name}
+                          <Chip
+                            label={WRINKLE_TYPES.find(t => t.value === wrinkle.kind)?.label}
+                            size="small"
+                            color="secondary"
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <>
+                          Week {wrinkle.week}
+                          {wrinkle.game && ` • ${wrinkle.game.away.abbreviation} @ ${wrinkle.game.home.abbreviation}`}
+                          {wrinkle.spread && ` • Spread: ${wrinkle.spread}`}
+                        </>
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Paper>
+        </Box>
+      </Container>
+    </AppShell>
   );
 }
