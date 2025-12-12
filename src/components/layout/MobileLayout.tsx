@@ -5,7 +5,7 @@ import { Box, Paper, Tabs, Tab, Typography, Stack, Chip, CircularProgress, Butto
 import { SportsFootball, Leaderboard, EmojiEvents, Check, Lock } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import NFLGames from './NFLGames';
+import NFLScores from './NFLScores';
 import Standings from './Standings';
 
 type Pick = {
@@ -280,7 +280,7 @@ export default function MobileLayout({ children }: Props) {
         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
           NFL Scores
         </Typography>
-        <NFLGames />
+        <NFLScores />
       </TabPanel>
     </Box>
   );

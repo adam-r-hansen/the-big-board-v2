@@ -34,12 +34,10 @@ export default function Home() {
 
   useEffect(() => {
     const loadData = async () => {
-      // Get user
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
 
       if (user) {
-        // Get user's league season participations
         const { data: participants } = await supabase
           .from('league_season_participants_v2')
           .select(`
@@ -67,13 +65,11 @@ export default function Home() {
           }));
           setLeagues(leagueInfos);
 
-          // Check localStorage for last active league
           const lastLeagueId = localStorage.getItem('activeLeagueSeasonId');
           const lastLeague = leagueInfos.find((l: LeagueInfo) => l.id === lastLeagueId);
           const active = lastLeague || leagueInfos[0];
           setActiveLeague(active);
           
-          // Load dashboard stats for active league
           await loadDashboardStats(user.id, active.id);
         }
       }
@@ -85,7 +81,6 @@ export default function Home() {
   }, [supabase]);
 
   const loadDashboardStats = async (userId: string, leagueSeasonId: string) => {
-    // Get current week
     const now = new Date();
     const { data: nextGame } = await supabase
       .from('games')
@@ -99,7 +94,6 @@ export default function Home() {
     const week = nextGame?.week || 14;
     setCurrentWeek(week);
 
-    // Get member count
     const { count } = await supabase
       .from('league_season_participants_v2')
       .select('*', { count: 'exact', head: true })
@@ -108,7 +102,6 @@ export default function Home() {
 
     setTotalMembers(count || 1);
 
-    // Get user's picks
     const { data: userPicks } = await supabase
       .from('picks_v2')
       .select('team_id, points')
@@ -121,7 +114,6 @@ export default function Home() {
       setSeasonPoints(userPicks.reduce((sum, p) => sum + (p.points || 0), 0));
     }
 
-    // Calculate rank
     const { data: allPicks } = await supabase
       .from('picks_v2')
       .select('profile_id, points')
@@ -142,6 +134,7 @@ export default function Home() {
   const handleLeagueChange = async (league: LeagueInfo) => {
     setActiveLeague(league);
     localStorage.setItem('activeLeagueSeasonId', league.id);
+    window.dispatchEvent(new Event('leagueChanged'));
     if (user) {
       await loadDashboardStats(user.id, league.id);
     }
@@ -164,7 +157,6 @@ export default function Home() {
       activeLeague={activeLeague}
       onLeagueChange={handleLeagueChange}
     >
-      {/* Dashboard Content - This appears in the middle column */}
       <Box>
         {/* Season Progress Card */}
         <Paper sx={{ p: 3, mb: 3 }}>

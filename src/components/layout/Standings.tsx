@@ -25,6 +25,8 @@ export default function Standings() {
   const supabase = createClient();
 
   const loadStandings = useCallback(async () => {
+    setLoading(true);
+    
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setCurrentUserId(user.id);
 
@@ -45,11 +47,11 @@ export default function Standings() {
       .limit(1)
       .single();
 
-    const week = nextGame?.week || 1;
+    const week = nextGame?.week || 15;
     setCurrentWeek(week);
 
     // Get all participants for this league season
-    const { data: participants } = await supabase
+    const { data: participants, error: partError } = await supabase
       .from('league_season_participants_v2')
       .select(`
         profile_id,
@@ -61,7 +63,10 @@ export default function Standings() {
       .eq('league_season_id', leagueSeasonId)
       .eq('active', true);
 
-    if (!participants) {
+    console.log('Participants query:', { leagueSeasonId, participants, partError });
+
+    if (!participants || participants.length === 0) {
+      console.log('No participants found for league:', leagueSeasonId);
       setLoading(false);
       return;
     }
@@ -77,6 +82,8 @@ export default function Standings() {
         game:games(status)
       `)
       .eq('league_season_id', leagueSeasonId);
+
+    console.log('Picks query:', { allPicks: allPicks?.length });
 
     // Calculate standings
     const standingsMap = new Map<string, Standing>();
@@ -136,6 +143,7 @@ export default function Standings() {
       (a, b) => b.total_points - a.total_points
     );
 
+    console.log('Final standings:', sorted);
     setStandings(sorted);
     setLoading(false);
   }, [supabase]);

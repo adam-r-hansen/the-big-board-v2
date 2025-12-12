@@ -31,7 +31,7 @@ type Wrinkle = {
   spread: number | null;
   spread_team_id: string | null;
   config: any;
-  game: Game;
+  game: Game | null;
 };
 
 type WrinklePick = {
@@ -51,6 +51,54 @@ interface Props {
 
 export default function WrinkleCard({ wrinkle, pick, onSelectTeam, disabled }: Props) {
   const { game } = wrinkle;
+  
+  // If no game attached (like winless_double), don't render as a game card
+  if (!game) {
+    return (
+      <Paper
+        elevation={2}
+        sx={{
+          borderRadius: 2,
+          overflow: 'hidden',
+          border: 2,
+          borderColor: 'secondary.main',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            bgcolor: 'secondary.main',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Stars fontSize="small" />
+            <Typography variant="subtitle2" fontWeight={700}>
+              {wrinkle.name}
+            </Typography>
+          </Box>
+          <Chip
+            label={getKindLabel(wrinkle.kind)}
+            size="small"
+            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', height: 22 }}
+          />
+        </Box>
+        <Box sx={{ p: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            {wrinkle.kind === 'winless_double' 
+              ? 'Pick a winless team in your regular picks - if they win, your points are doubled!'
+              : 'Special wrinkle - no game selection needed'}
+          </Typography>
+        </Box>
+      </Paper>
+    );
+  }
+
   const gameTime = new Date(game.game_utc);
   const isLocked = gameTime < new Date();
   const isComplete = game.status === 'FINAL';
@@ -62,16 +110,6 @@ export default function WrinkleCard({ wrinkle, pick, onSelectTeam, disabled }: P
       hour: 'numeric',
       minute: '2-digit',
     });
-  };
-
-  const getKindLabel = () => {
-    switch (wrinkle.kind) {
-      case 'bonus_game': return 'Bonus Pick';
-      case 'bonus_game_ats': return 'Against the Spread';
-      case 'bonus_game_ou': return 'Over/Under';
-      case 'winless_double': return 'Winless Double';
-      default: return 'Bonus';
-    }
   };
 
   const TeamRow = ({ team, isHome }: { team: Team; isHome: boolean }) => {
@@ -192,7 +230,7 @@ export default function WrinkleCard({ wrinkle, pick, onSelectTeam, disabled }: P
           </Typography>
         </Box>
         <Chip
-          label={getKindLabel()}
+          label={getKindLabel(wrinkle.kind)}
           size="small"
           sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', height: 22 }}
         />
@@ -222,4 +260,15 @@ export default function WrinkleCard({ wrinkle, pick, onSelectTeam, disabled }: P
       )}
     </Paper>
   );
+}
+
+function getKindLabel(kind: string) {
+  switch (kind) {
+    case 'bonus_game': return 'Bonus Pick';
+    case 'bonus_game_ats': return 'Against the Spread';
+    case 'bonus_game_ou': return 'Over/Under';
+    case 'bonus_game_oof': return 'Bonus Pick';
+    case 'winless_double': return 'Winless Double';
+    default: return 'Bonus';
+  }
 }

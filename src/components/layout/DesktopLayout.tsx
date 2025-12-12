@@ -215,14 +215,16 @@ export default function DesktopLayout({ children }: Props) {
 
   // Listen for league changes
   useEffect(() => {
-    const handleLeagueChange = (event: CustomEvent) => {
-      const newLeagueId = event.detail;
-      setLeagueSeasonId(newLeagueId);
-      loadData(newLeagueId);
+    const handleLeagueChange = () => {
+      const newLeagueId = localStorage.getItem('activeLeagueSeasonId');
+      if (newLeagueId) {
+        setLeagueSeasonId(newLeagueId);
+        loadData(newLeagueId);
+      }
     };
 
-    window.addEventListener('leagueChanged', handleLeagueChange as EventListener);
-    return () => window.removeEventListener('leagueChanged', handleLeagueChange as EventListener);
+    window.addEventListener('leagueChanged', handleLeagueChange);
+    return () => window.removeEventListener('leagueChanged', handleLeagueChange);
   }, [loadData]);
 
   const PickCard = ({ pick, showName = false }: { pick: Pick; showName?: boolean }) => {
@@ -461,11 +463,11 @@ export default function DesktopLayout({ children }: Props) {
         )}
       </Box>
 
-      {/* Center - Main Content (Standings, Stats) */}
+      {/* Center - Main Content: Children first, then Standings */}
       <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
-        <Standings />
+        {children}
         <Box sx={{ mt: 3 }}>
-          {children}
+          <Standings />
         </Box>
       </Box>
 
