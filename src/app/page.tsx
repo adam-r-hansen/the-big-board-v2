@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress } from '@mui/material';
-import { EmojiEvents, TrendingUp, CalendarMonth, People } from '@mui/icons-material';
+import { EmojiEvents, TrendingUp, CalendarMonth, People, SportsFootball } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 import AppShell from '@/components/layout/AppShell';
 import type { User } from '@supabase/supabase-js';
@@ -164,46 +164,90 @@ export default function Home() {
       activeLeague={activeLeague}
       onLeagueChange={handleLeagueChange}
     >
-      {/* Dashboard Content */}
+      {/* Dashboard Content - This appears in the middle column */}
       <Box>
-        {/* Header */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" fontWeight={700} gutterBottom>
-            {activeLeague?.leagues_v2?.name || 'Dashboard'}
+        {/* Season Progress Card */}
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6" fontWeight={600}>
+              Season Progress
+            </Typography>
+            <Chip 
+              icon={<CalendarMonth />} 
+              label={`Week ${currentWeek} of 18`} 
+              size="small" 
+              color="primary" 
+            />
+          </Stack>
+          <LinearProgress 
+            variant="determinate" 
+            value={seasonProgress} 
+            sx={{ height: 8, borderRadius: 4 }} 
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            {18 - currentWeek} weeks remaining in regular season
           </Typography>
-          <Stack direction="row" spacing={1}>
-            <Chip icon={<CalendarMonth />} label={`Week ${currentWeek}`} size="small" color="primary" />
-            <Chip icon={<People />} label={`${totalMembers} member${totalMembers !== 1 ? 's' : ''}`} size="small" variant="outlined" />
-          </Stack>
-        </Box>
-
-        {/* Season Progress */}
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Typography variant="body2" color="text.secondary">Season Progress</Typography>
-            <Typography variant="body2" fontWeight={600}>Week {currentWeek} of 18</Typography>
-          </Stack>
-          <LinearProgress variant="determinate" value={seasonProgress} sx={{ height: 6, borderRadius: 3 }} />
         </Paper>
 
-        {/* Stats */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <EmojiEvents sx={{ fontSize: 32, color: 'warning.main', mb: 0.5 }} />
-            <Typography variant="h5" fontWeight={700}>{userRank ? `#${userRank}` : '-'}</Typography>
-            <Typography variant="caption" color="text.secondary">Rank</Typography>
+        {/* Quick Stats */}
+        <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+          Your Stats
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 3 }}>
+          <Paper sx={{ p: 2.5, textAlign: 'center' }}>
+            <EmojiEvents sx={{ fontSize: 36, color: 'warning.main', mb: 1 }} />
+            <Typography variant="h4" fontWeight={700}>
+              {userRank ? `#${userRank}` : '-'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Current Rank
+            </Typography>
           </Paper>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <Typography sx={{ fontSize: 32 }}>🏈</Typography>
-            <Typography variant="h5" fontWeight={700}>{teamsRemaining}</Typography>
-            <Typography variant="caption" color="text.secondary">Teams Left</Typography>
+          
+          <Paper sx={{ p: 2.5, textAlign: 'center' }}>
+            <SportsFootball sx={{ fontSize: 36, color: 'primary.main', mb: 1 }} />
+            <Typography variant="h4" fontWeight={700}>
+              {teamsRemaining}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Teams Left
+            </Typography>
           </Paper>
-          <Paper sx={{ p: 2, textAlign: 'center' }}>
-            <TrendingUp sx={{ fontSize: 32, color: 'success.main', mb: 0.5 }} />
-            <Typography variant="h5" fontWeight={700}>{seasonPoints}</Typography>
-            <Typography variant="caption" color="text.secondary">Points</Typography>
+          
+          <Paper sx={{ p: 2.5, textAlign: 'center' }}>
+            <TrendingUp sx={{ fontSize: 36, color: 'success.main', mb: 1 }} />
+            <Typography variant="h4" fontWeight={700}>
+              {seasonPoints}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Total Points
+            </Typography>
           </Paper>
         </Box>
+
+        {/* League Info */}
+        <Paper sx={{ p: 3 }}>
+          <Stack direction="row" alignItems="center" sx={{ gap: 1, mb: 2 }}>
+            <People color="action" />
+            <Typography variant="h6" fontWeight={600}>
+              League Info
+            </Typography>
+          </Stack>
+          <Stack spacing={1.5}>
+            <Stack direction="row" justifyContent="space-between">
+              <Typography color="text.secondary">League</Typography>
+              <Typography fontWeight={600}>{activeLeague?.leagues_v2?.name}</Typography>
+            </Stack>
+            <Stack direction="row" justifyContent="space-between">
+              <Typography color="text.secondary">Season</Typography>
+              <Typography fontWeight={600}>{activeLeague?.season}</Typography>
+            </Stack>
+            <Stack direction="row" justifyContent="space-between">
+              <Typography color="text.secondary">Members</Typography>
+              <Typography fontWeight={600}>{totalMembers}</Typography>
+            </Stack>
+          </Stack>
+        </Paper>
       </Box>
     </AppShell>
   );

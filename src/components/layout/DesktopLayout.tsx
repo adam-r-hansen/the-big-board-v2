@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Box, Paper, Typography, Stack, Chip, CircularProgress, Button } from '@mui/material';
-import { Check, Lock, Stars } from '@mui/icons-material';
+import { Box, Paper, Typography, Stack, Chip, CircularProgress, Button, Divider } from '@mui/material';
+import { Check, Lock, Stars, Group } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import NFLGames from './NFLGames';
+import NFLScores from './NFLScores';
 import Standings from './Standings';
 
 type Pick = {
@@ -15,6 +15,7 @@ type Pick = {
   game_id: string;
   points: number;
   locked_at: string | null;
+  profile_id: string;
   team: {
     short_name: string;
     abbreviation: string;
@@ -28,6 +29,10 @@ type Pick = {
     home_score: number | null;
     away_score: number | null;
     game_utc: string;
+  };
+  profile?: {
+    display_name: string;
+    profile_color: string;
   };
 };
 
@@ -66,19 +71,22 @@ export default function DesktopLayout({ children }: Props) {
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [weekPicks, setWeekPicks] = useState<Pick[]>([]);
+  const [leaguePicks, setLeaguePicks] = useState<Pick[]>([]);
   const [wrinklePicks, setWrinklePicks] = useState<WrinklePick[]>([]);
   const [seasonPoints, setSeasonPoints] = useState(0);
   const [weekPoints, setWeekPoints] = useState(0);
   const [leagueSeasonId, setLeagueSeasonId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [allGamesLocked, setAllGamesLocked] = useState(false);
 
   const supabase = createClient();
 
   const loadData = useCallback(async (leagueId: string) => {
-    console.log('Loading data for league:', leagueId);
     setLoading(true);
     
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
 
     // Get current week
     const now = new Date();
@@ -94,7 +102,17 @@ export default function DesktopLayout({ children }: Props) {
     const week = nextGame?.week || 1;
     setCurrentWeek(week);
 
-    // Get all picks with team and game info
+    // Check if all games for the week have started (locked)
+    const { data: upcomingGames } = await supabase
+      .from('games')
+      .select('id')
+      .eq('season', 2025)
+      .eq('week', week)
+      .gte('game_utc', now.toISOString());
+    
+    setAllGamesLocked(!upcomingGames || upcomingGames.length === 0);
+
+    // Get user's picks with team and game info
     const { data: allPicks } = await supabase
       .from('picks_v2')
       .select(`
@@ -104,6 +122,7 @@ export default function DesktopLayout({ children }: Props) {
         game_id,
         points,
         locked_at,
+        profile_id,
         team:teams(short_name, abbreviation, color_primary, logo),
         game:games(status, home_team, away_team, home_score, away_score, game_utc)
       `)
@@ -120,6 +139,31 @@ export default function DesktopLayout({ children }: Props) {
       weekTotal = picks.filter(p => p.week === week).reduce((sum, p) => sum + (p.points || 0), 0);
     } else {
       setWeekPicks([]);
+    }
+
+    // Get ALL league picks for current week (for league picks section)
+    const { data: allLeaguePicks } = await supabase
+      .from('picks_v2')
+      .select(`
+        id,
+        week,
+        team_id,
+        game_id,
+        points,
+        locked_at,
+        profile_id,
+        team:teams(short_name, abbreviation, color_primary, logo),
+        game:games(status, home_team, away_team, home_score, away_score, game_utc),
+        profile:profiles(display_name, profile_color)
+      `)
+      .eq('league_season_id', leagueId)
+      .eq('week', week)
+      .neq('profile_id', user.id);
+
+    if (allLeaguePicks) {
+      setLeaguePicks(allLeaguePicks as unknown as Pick[]);
+    } else {
+      setLeaguePicks([]);
     }
 
     // Get wrinkle picks
@@ -172,7 +216,6 @@ export default function DesktopLayout({ children }: Props) {
   // Listen for league changes
   useEffect(() => {
     const handleLeagueChange = (event: CustomEvent) => {
-      console.log('League changed event received:', event.detail);
       const newLeagueId = event.detail;
       setLeagueSeasonId(newLeagueId);
       loadData(newLeagueId);
@@ -182,8 +225,8 @@ export default function DesktopLayout({ children }: Props) {
     return () => window.removeEventListener('leagueChanged', handleLeagueChange as EventListener);
   }, [loadData]);
 
-  const PickCard = ({ pick }: { pick: Pick }) => {
-    const isLocked = !!pick.locked_at;
+  const PickCard = ({ pick, showName = false }: { pick: Pick; showName?: boolean }) => {
+    const isLocked = !!pick.locked_at || new Date(pick.game.game_utc) < new Date();
     const isComplete = pick.game.status === 'FINAL';
     const isHome = pick.team_id === pick.game.home_team;
     const teamScore = isHome ? pick.game.home_score : pick.game.away_score;
@@ -198,20 +241,19 @@ export default function DesktopLayout({ children }: Props) {
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
-          border: 2,
-          borderColor: pick.team.color_primary,
-          borderLeftWidth: 4,
-          borderLeftColor: isComplete ? (isWinner ? 'success.main' : 'error.main') : 'transparent',
+          bgcolor: pick.team.color_primary,
+          color: 'white',
+          borderRadius: 2,
+          border: isComplete ? 3 : 0,
+          borderColor: isWinner ? 'success.main' : 'error.main',
         }}
       >
         <Box
           sx={{
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             borderRadius: '50%',
             bgcolor: 'white',
-            border: 2,
-            borderColor: pick.team.color_primary,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -221,28 +263,31 @@ export default function DesktopLayout({ children }: Props) {
             component="img"
             src={pick.team.logo}
             alt={pick.team.short_name}
-            sx={{ width: 28, height: 28, objectFit: 'contain' }}
+            sx={{ width: 24, height: 24, objectFit: 'contain' }}
           />
         </Box>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="body2" fontWeight={600}>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          {showName && pick.profile && (
+            <Typography variant="caption" sx={{ opacity: 0.8 }}>
+              {pick.profile.display_name}
+            </Typography>
+          )}
+          <Typography variant="body2" fontWeight={600} noWrap>
             {pick.team.short_name}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ opacity: 0.8 }}>
             {isComplete 
-              ? `Final: ${teamScore} - ${oppScore}` 
-              : isLocked 
-                ? 'In Progress'
-                : gameTime.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+              ? `${teamScore} - ${oppScore}` 
+              : gameTime.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
             }
           </Typography>
         </Box>
         {isComplete && (
-          <Typography variant="body1" fontWeight={700} color={isWinner ? 'success.main' : 'error.main'}>
-            {pick.points} pts
+          <Typography variant="body1" fontWeight={700}>
+            {isWinner ? `+${pick.points}` : '0'}
           </Typography>
         )}
-        {isLocked && !isComplete && <Lock fontSize="small" color="disabled" />}
+        {isLocked && !isComplete && <Lock fontSize="small" sx={{ opacity: 0.7 }} />}
       </Paper>
     );
   };
@@ -263,14 +308,13 @@ export default function DesktopLayout({ children }: Props) {
           gap: 1.5,
           border: 2,
           borderColor: 'secondary.main',
-          borderLeftWidth: 4,
-          borderLeftColor: isComplete ? (isWinner ? 'success.main' : 'error.main') : 'transparent',
+          borderRadius: 2,
         }}
       >
         <Box
           sx={{
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             borderRadius: '50%',
             bgcolor: 'white',
             border: 2,
@@ -284,7 +328,7 @@ export default function DesktopLayout({ children }: Props) {
             component="img"
             src={pick.team.logo}
             alt={pick.team.short_name}
-            sx={{ width: 28, height: 28, objectFit: 'contain' }}
+            sx={{ width: 24, height: 24, objectFit: 'contain' }}
           />
         </Box>
         <Box sx={{ flexGrow: 1 }}>
@@ -298,18 +342,26 @@ export default function DesktopLayout({ children }: Props) {
         </Box>
         {isComplete && (
           <Typography variant="body1" fontWeight={700} color={isWinner ? 'success.main' : 'error.main'}>
-            +{pick.points} pts
+            {isWinner ? `+${pick.points}` : '0'}
           </Typography>
         )}
       </Paper>
     );
   };
 
+  // Group league picks by user
+  const groupedLeaguePicks = leaguePicks.reduce((acc, pick) => {
+    const name = pick.profile?.display_name || 'Unknown';
+    if (!acc[name]) acc[name] = [];
+    acc[name].push(pick);
+    return acc;
+  }, {} as Record<string, Pick[]>);
+
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
-      {/* Left Column - My Picks */}
-      <Box sx={{ width: 300, p: 2, borderRight: 1, borderColor: 'divider', overflow: 'auto' }}>
-        <Typography variant="h6" gutterBottom>
+      {/* Left Column - Picks */}
+      <Box sx={{ width: 280, p: 2, borderRight: 1, borderColor: 'divider', overflow: 'auto' }}>
+        <Typography variant="h6" fontWeight={700} gutterBottom>
           Week {currentWeek}
         </Typography>
 
@@ -317,10 +369,11 @@ export default function DesktopLayout({ children }: Props) {
           <CircularProgress size={24} />
         ) : (
           <>
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="body2" color="text.secondary">
-                  Picks
+            {/* My Picks */}
+            <Box sx={{ mb: 3 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  My Picks
                 </Typography>
                 <Chip 
                   icon={weekPicks.length >= 2 ? <Check /> : undefined}
@@ -329,64 +382,96 @@ export default function DesktopLayout({ children }: Props) {
                   color={weekPicks.length >= 2 ? 'success' : 'default'}
                 />
               </Stack>
-            </Paper>
 
-            {weekPicks.length === 0 && wrinklePicks.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 2 }}>
-                <Typography variant="body2" color="text.disabled" sx={{ mb: 1 }}>
-                  No picks yet
-                </Typography>
+              {weekPicks.length === 0 ? (
                 <Button 
-                  variant="contained" 
+                  variant="outlined" 
                   size="small"
+                  fullWidth
                   onClick={() => router.push('/picks')}
                 >
                   Make Picks
                 </Button>
-              </Box>
-            ) : (
-              <Stack spacing={1.5}>
-                {weekPicks.map((pick) => (
-                  <PickCard key={pick.id} pick={pick} />
-                ))}
-                {wrinklePicks.map((pick) => (
-                  <WrinklePickCard key={pick.id} pick={pick} />
-                ))}
-              </Stack>
-            )}
+              ) : (
+                <Stack spacing={1}>
+                  {weekPicks.map((pick) => (
+                    <PickCard key={pick.id} pick={pick} />
+                  ))}
+                </Stack>
+              )}
 
-            <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-              <Stack spacing={1}>
+              {wrinklePicks.length > 0 && (
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                  {wrinklePicks.map((pick) => (
+                    <WrinklePickCard key={pick.id} pick={pick} />
+                  ))}
+                </Stack>
+              )}
+
+              {/* Week/Season Points */}
+              <Paper variant="outlined" sx={{ p: 1.5, mt: 2 }}>
                 <Stack direction="row" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">Week Points</Typography>
-                  <Typography variant="body1" fontWeight={600}>{weekPoints}</Typography>
+                  <Typography variant="caption" color="text.secondary">Week</Typography>
+                  <Typography variant="body2" fontWeight={600}>{weekPoints} pts</Typography>
                 </Stack>
                 <Stack direction="row" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">Season Total</Typography>
-                  <Typography variant="body1" fontWeight={700}>{seasonPoints}</Typography>
+                  <Typography variant="caption" color="text.secondary">Season</Typography>
+                  <Typography variant="body2" fontWeight={700}>{seasonPoints} pts</Typography>
                 </Stack>
+              </Paper>
+            </Box>
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* League Picks */}
+            <Box>
+              <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1.5 }}>
+                <Group fontSize="small" color="action" />
+                <Typography variant="subtitle2" color="text.secondary">
+                  League Picks
+                </Typography>
               </Stack>
-            </Paper>
+
+              {!allGamesLocked ? (
+                <Typography variant="caption" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                  Visible once games lock
+                </Typography>
+              ) : leaguePicks.length === 0 ? (
+                <Typography variant="caption" color="text.disabled">
+                  No picks from other members
+                </Typography>
+              ) : (
+                <Stack spacing={1.5}>
+                  {Object.entries(groupedLeaguePicks).map(([name, picks]) => (
+                    <Box key={name}>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        {name}
+                      </Typography>
+                      <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                        {picks.map((pick) => (
+                          <PickCard key={pick.id} pick={pick} />
+                        ))}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </>
         )}
       </Box>
 
-      {/* Center - Main Content */}
+      {/* Center - Main Content (Standings, Stats) */}
       <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
-        {children}
+        <Standings />
+        <Box sx={{ mt: 3 }}>
+          {children}
+        </Box>
       </Box>
 
-      {/* Right Column - NFL Scores & Standings */}
-      <Box sx={{ width: 320, p: 2, borderLeft: 1, borderColor: 'divider', overflow: 'auto' }}>
-        <Typography variant="h6" gutterBottom>
-          NFL Scores
-        </Typography>
-        <NFLGames />
-
-        <Typography variant="h6" sx={{ mt: 3 }} gutterBottom>
-          Standings
-        </Typography>
-        <Standings />
+      {/* Right Column - NFL Scores */}
+      <Box sx={{ width: 300, p: 2, borderLeft: 1, borderColor: 'divider', overflow: 'auto' }}>
+        <NFLScores />
       </Box>
     </Box>
   );
