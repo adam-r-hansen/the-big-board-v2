@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, Paper, Typography, Divider, IconButton, useTheme } from '@mui/material';
+import { Box, Paper, Typography, Divider, IconButton, Chip, useTheme } from '@mui/material';
 import { 
   AddCircleOutline,
   CheckCircle,
@@ -31,6 +31,11 @@ type Game = {
   away: Team;
 };
 
+type PickData = {
+  points: number;
+  multiplier: number;
+};
+
 interface Props {
   game: Game;
   selectedTeamId?: string;
@@ -38,6 +43,7 @@ interface Props {
   onSelectTeam: (teamId: string) => void;
   disabled?: boolean;
   isLocked?: boolean;
+  pickData?: PickData;
 }
 
 // Helper to determine if a color is light or dark
@@ -57,6 +63,7 @@ export default function GameCard({
   onSelectTeam,
   disabled,
   isLocked: forceLocked,
+  pickData,
 }: Props) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -77,6 +84,10 @@ export default function GameCard({
   const opponentScore = pickedIsHome ? game.away_score : game.home_score;
   const isWin = isComplete && pickedTeam && (pickedScore ?? 0) > (opponentScore ?? 0);
   const isLoss = isComplete && pickedTeam && (pickedScore ?? 0) < (opponentScore ?? 0);
+
+  // Get actual points (from pickData if available, otherwise calculate)
+  const actualPoints = pickData?.points ?? (isWin ? pickedScore : 0);
+  const multiplier = pickData?.multiplier ?? 1;
 
   const formatGameTime = () => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -181,6 +192,27 @@ export default function GameCard({
               <CheckCircle sx={{ fontSize: 14 }} />
             </Box>
           )}
+          {/* x2 badge for multiplier */}
+          {isSelected && multiplier > 1 && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -4,
+                right: -8,
+                px: 0.5,
+                py: 0.25,
+                borderRadius: 1,
+                bgcolor: 'secondary.main',
+                color: 'white',
+                fontSize: 10,
+                fontWeight: 700,
+                border: '2px solid',
+                borderColor: 'background.paper',
+              }}
+            >
+              x{multiplier}
+            </Box>
+          )}
         </Box>
 
         {/* Team Name */}
@@ -279,17 +311,27 @@ export default function GameCard({
           )}
         </Typography>
         
-        {/* Win/Loss indicator */}
+        {/* Win/Loss indicator with multiplier */}
         {isComplete && pickedTeam && (
-          <Typography 
-            variant="caption" 
-            fontWeight={700}
-            sx={{ 
-              color: isWin ? 'success.main' : 'error.main',
-            }}
-          >
-            {isWin ? '✓ WIN' : 'LOSS'}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {multiplier > 1 && (
+              <Chip 
+                label={`x${multiplier}`} 
+                size="small" 
+                color="secondary"
+                sx={{ height: 20, fontSize: 11, fontWeight: 700 }}
+              />
+            )}
+            <Typography 
+              variant="caption" 
+              fontWeight={700}
+              sx={{ 
+                color: isWin ? 'success.main' : 'error.main',
+              }}
+            >
+              {isWin ? '✓ WIN' : 'LOSS'}
+            </Typography>
+          </Box>
         )}
         
         {isLocked && !isComplete && !isLive && (
@@ -320,6 +362,10 @@ export default function GameCard({
               ? (isDark ? 'success.dark' : 'success.light')
               : (isDark ? 'error.dark' : 'error.light'),
             textAlign: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
           }}
         >
           <Typography 
@@ -331,8 +377,21 @@ export default function GameCard({
                 : (isDark ? 'error.light' : 'error.dark'),
             }}
           >
-            {isWin ? `+${pickedScore} pts` : '0 pts'}
+            {isWin ? `+${actualPoints} pts` : '0 pts'}
           </Typography>
+          {isWin && multiplier > 1 && (
+            <Typography 
+              variant="caption"
+              sx={{ 
+                color: isWin 
+                  ? (isDark ? 'success.light' : 'success.dark')
+                  : (isDark ? 'error.light' : 'error.dark'),
+                opacity: 0.8,
+              }}
+            >
+              ({pickedScore} × {multiplier})
+            </Typography>
+          )}
         </Box>
       )}
     </Paper>

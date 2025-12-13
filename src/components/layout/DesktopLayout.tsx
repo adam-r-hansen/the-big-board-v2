@@ -14,6 +14,7 @@ type Pick = {
   team_id: string;
   game_id: string;
   points: number;
+  multiplier: number;
   locked_at: string | null;
   profile_id: string;
   team: {
@@ -52,7 +53,7 @@ type WrinklePick = {
       away_team: string;
       home_score: number | null;
       away_score: number | null;
-    };
+    } | null;
   };
   team: {
     short_name: string;
@@ -121,6 +122,7 @@ export default function DesktopLayout({ children }: Props) {
         team_id,
         game_id,
         points,
+        multiplier,
         locked_at,
         profile_id,
         team:teams(short_name, abbreviation, color_primary, logo),
@@ -133,7 +135,10 @@ export default function DesktopLayout({ children }: Props) {
     let weekTotal = 0;
 
     if (allPicks) {
-      const picks = allPicks as unknown as Pick[];
+      const picks = (allPicks as unknown as Pick[]).map(p => ({
+        ...p,
+        multiplier: p.multiplier || 1,
+      }));
       setWeekPicks(picks.filter(p => p.week === week));
       seasonTotal = picks.reduce((sum, p) => sum + (p.points || 0), 0);
       weekTotal = picks.filter(p => p.week === week).reduce((sum, p) => sum + (p.points || 0), 0);
@@ -150,6 +155,7 @@ export default function DesktopLayout({ children }: Props) {
         team_id,
         game_id,
         points,
+        multiplier,
         locked_at,
         profile_id,
         team:teams(short_name, abbreviation, color_primary, logo),
@@ -161,7 +167,11 @@ export default function DesktopLayout({ children }: Props) {
       .neq('profile_id', user.id);
 
     if (allLeaguePicks) {
-      setLeaguePicks(allLeaguePicks as unknown as Pick[]);
+      const picks = (allLeaguePicks as unknown as Pick[]).map(p => ({
+        ...p,
+        multiplier: p.multiplier || 1,
+      }));
+      setLeaguePicks(picks);
     } else {
       setLeaguePicks([]);
     }
@@ -235,6 +245,7 @@ export default function DesktopLayout({ children }: Props) {
     const oppScore = isHome ? pick.game.away_score : pick.game.home_score;
     const isWinner = isComplete && teamScore !== null && oppScore !== null && teamScore > oppScore;
     const gameTime = new Date(pick.game.game_utc);
+    const multiplier = pick.multiplier || 1;
 
     return (
       <Paper
@@ -248,8 +259,31 @@ export default function DesktopLayout({ children }: Props) {
           borderRadius: 2,
           border: isComplete ? 3 : 0,
           borderColor: isWinner ? 'success.main' : 'error.main',
+          position: 'relative',
         }}
       >
+        {/* x2 Badge */}
+        {multiplier > 1 && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: -8,
+              right: -8,
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 1,
+              bgcolor: 'secondary.main',
+              color: 'white',
+              fontSize: 11,
+              fontWeight: 700,
+              border: '2px solid',
+              borderColor: 'background.paper',
+              zIndex: 1,
+            }}
+          >
+            x{multiplier}
+          </Box>
+        )}
         <Box
           sx={{
             width: 36,
@@ -295,6 +329,58 @@ export default function DesktopLayout({ children }: Props) {
   };
 
   const WrinklePickCard = ({ pick }: { pick: WrinklePick }) => {
+    // Handle wrinkles without games (like winless_double)
+    if (!pick.wrinkle.game) {
+      return (
+        <Paper
+          sx={{
+            p: 1.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            border: 2,
+            borderColor: 'secondary.main',
+            borderRadius: 2,
+          }}
+        >
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              bgcolor: 'white',
+              border: 2,
+              borderColor: pick.team.color_primary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Box
+              component="img"
+              src={pick.team.logo}
+              alt={pick.team.short_name}
+              sx={{ width: 24, height: 24, objectFit: 'contain' }}
+            />
+          </Box>
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="caption" color="secondary.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Stars sx={{ fontSize: 12 }} />
+              {pick.wrinkle.name}
+            </Typography>
+            <Typography variant="body2" fontWeight={600}>
+              {pick.team.short_name}
+            </Typography>
+          </Box>
+          {pick.points > 0 && (
+            <Typography variant="body1" fontWeight={700} color="success.main">
+              +{pick.points}
+            </Typography>
+          )}
+        </Paper>
+      );
+    }
+
     const isComplete = pick.wrinkle.game.status === 'FINAL';
     const isHome = pick.team_id === pick.wrinkle.game.home_team;
     const teamScore = isHome ? pick.wrinkle.game.home_score : pick.wrinkle.game.away_score;

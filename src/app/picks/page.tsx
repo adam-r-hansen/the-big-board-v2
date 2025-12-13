@@ -58,6 +58,7 @@ type Pick = {
   team_id: string;
   game_id: string;
   points: number;
+  multiplier: number;
   locked_at: string | null;
 };
 
@@ -73,7 +74,7 @@ type Wrinkle = {
   spread: number | null;
   spread_team_id: string | null;
   config: any;
-  game: Game;
+  game: Game | null;
 };
 
 type WrinklePick = {
@@ -163,6 +164,7 @@ export default function PicksPage() {
       if (userPicks) {
         const picksWithStatus = userPicks.map((p: any) => ({
           ...p,
+          multiplier: p.multiplier || 1,
           game_status: p.game?.status || 'UPCOMING',
         }));
         setPicks(picksWithStatus);
@@ -249,12 +251,13 @@ export default function PicksPage() {
   const weekPickCount = weekPicks.length;
 
   // Build pickedTeams map for TeamGrid with game status
-  const pickedTeams = new Map<string, { week: number; points: number; status: string }>();
+  const pickedTeams = new Map<string, { week: number; points: number; status: string; multiplier: number }>();
   picks.forEach((p) => {
     pickedTeams.set(p.team_id, { 
       week: p.week, 
       points: p.points,
       status: p.game_status,
+      multiplier: p.multiplier || 1,
     });
   });
 
@@ -340,7 +343,7 @@ export default function PicksPage() {
       if (insertError) {
         setError(insertError.message);
       } else if (newPick) {
-        setPicks([...picks, { ...newPick, game_status: 'UPCOMING' }]);
+        setPicks([...picks, { ...newPick, multiplier: 1, game_status: 'UPCOMING' }]);
         setUsedTeams((prev) => new Set([...prev, teamId]));
       }
     }
@@ -350,7 +353,7 @@ export default function PicksPage() {
 
   // Handle wrinkle pick
   const handleWrinklePick = async (wrinkle: Wrinkle, teamId: string) => {
-    if (!userId || saving) return;
+    if (!userId || saving || !wrinkle.game) return;
 
     const gameTime = new Date(wrinkle.game.game_utc);
     if (gameTime < new Date()) {
@@ -402,6 +405,16 @@ export default function PicksPage() {
     }
 
     setSaving(false);
+  };
+
+  // Get pick data for a game
+  const getPickData = (gameId: string) => {
+    const pick = weekPicks.find((p) => p.game_id === gameId);
+    if (!pick) return undefined;
+    return {
+      points: pick.points,
+      multiplier: pick.multiplier || 1,
+    };
   };
 
   // Games Panel Content
@@ -477,6 +490,7 @@ export default function PicksPage() {
             onSelectTeam={(teamId) => handleSelectTeam(game, teamId)}
             disabled={saving || (weekPickCount >= 2 && !weekPicks.find((p) => p.game_id === game.id))}
             isLocked={isPickLocked(game.id)}
+            pickData={getPickData(game.id)}
           />
         ))}
       </Stack>
