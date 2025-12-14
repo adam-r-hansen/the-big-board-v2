@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Box, Typography, Stack, CircularProgress, Chip } from '@mui/material';
+import { Box, Typography, Stack, CircularProgress, Chip, useMediaQuery, useTheme } from '@mui/material';
 import { Circle } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 
@@ -10,6 +10,9 @@ type Team = {
   abbreviation: string;
   logo: string;
   color_primary: string;
+  wins: number;
+  losses: number;
+  ties: number;
 };
 
 type Game = {
@@ -26,8 +29,54 @@ export default function NFLScores() {
   const [loading, setLoading] = useState(true);
   const [games, setGames] = useState<Game[]>([]);
   const [currentWeek, setCurrentWeek] = useState(1);
+  
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const supabase = createClient();
+
+  // Helper to get record color
+  const getRecordColor = (wins: number, losses: number, ties: number) => {
+    const total = wins + losses + ties;
+    if (total === 0) return 'text.secondary';
+    const winPct = (wins + ties * 0.5) / total;
+    
+    if (winPct >= 0.700) return 'success.dark'; // Elite
+    if (winPct >= 0.500) return 'success.main'; // Playoff contender
+    if (winPct >= 0.400) return 'text.secondary'; // Below .500
+    return 'error.main'; // OOF territory or worse
+  };
+
+  // Helper to format record
+  const formatRecord = (team: Team) => {
+    if (team.ties > 0) {
+      return `${team.wins}-${team.losses}-${team.ties}`;
+    }
+    return `${team.wins}-${team.losses}`;
+  };
+
+  // Logo with white background container
+  const TeamLogo = ({ logo, alt, size = 20 }: { logo: string; alt: string; size?: number }) => (
+    <Box
+      sx={{
+        width: size + 4,
+        height: size + 4,
+        borderRadius: '50%',
+        bgcolor: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      <Box
+        component="img"
+        src={logo}
+        alt={alt}
+        sx={{ width: size, height: size, objectFit: 'contain' }}
+      />
+    </Box>
+  );
 
   useEffect(() => {
     const loadGames = async () => {
@@ -54,8 +103,8 @@ export default function NFLScores() {
           away_score,
           game_utc,
           status,
-          home:teams!games_home_team_fkey(short_name, abbreviation, logo, color_primary),
-          away:teams!games_away_team_fkey(short_name, abbreviation, logo, color_primary)
+          home:teams!games_home_team_fkey(short_name, abbreviation, logo, color_primary, wins, losses, ties),
+          away:teams!games_away_team_fkey(short_name, abbreviation, logo, color_primary, wins, losses, ties)
         `)
         .eq('season', 2025)
         .eq('week', week)
@@ -83,7 +132,6 @@ export default function NFLScores() {
   }
 
   // Group games by status
-  const now = new Date();
   const liveGames = games.filter(g => g.status === 'LIVE' || g.status === 'IN_PROGRESS');
   const finalGames = games.filter(g => g.status === 'FINAL');
   const upcomingGames = games.filter(g => 
@@ -102,72 +150,168 @@ export default function NFLScores() {
     return (
       <Box
         sx={{
-          py: 1,
+          py: 1.5,
           px: 1.5,
-          borderRadius: 1,
+          borderRadius: 1.5,
           bgcolor: isLive ? 'error.main' : 'background.paper',
           color: isLive ? 'white' : 'inherit',
           border: 1,
           borderColor: isLive ? 'error.main' : 'divider',
         }}
       >
-        {/* Away Team */}
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
-          <Box
-            component="img"
-            src={game.away.logo}
-            alt={game.away.abbreviation}
-            sx={{ width: 20, height: 20, objectFit: 'contain' }}
-          />
-          <Typography 
-            variant="body2" 
-            fontWeight={awayWinning && hasStarted ? 700 : 400}
-            sx={{ flexGrow: 1 }}
-            noWrap
-          >
-            {game.away.abbreviation}
-          </Typography>
-          {hasStarted && (
-            <Typography 
-              variant="body2" 
-              fontWeight={awayWinning ? 700 : 400}
-              sx={{ minWidth: 24, textAlign: 'right' }}
-            >
-              {game.away_score ?? 0}
-            </Typography>
-          )}
-        </Stack>
+        {/* MOBILE LAYOUT */}
+        {isMobile && (
+          <>
+            {/* Away Team - Mobile */}
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+              <TeamLogo logo={game.away.logo} alt={game.away.abbreviation} size={24} />
+              <Typography 
+                variant="body2" 
+                fontWeight={awayWinning && hasStarted ? 700 : 400}
+                sx={{ flexGrow: 1 }}
+                noWrap
+              >
+                {game.away.abbreviation}
+              </Typography>
+              {hasStarted && (
+                <>
+                  <Typography 
+                    variant="body2" 
+                    fontWeight={awayWinning ? 700 : 400}
+                    sx={{ minWidth: 24, textAlign: 'right' }}
+                  >
+                    {game.away_score ?? 0}
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    sx={{ 
+                      color: getRecordColor(game.away.wins, game.away.losses, game.away.ties),
+                      minWidth: 40,
+                      fontSize: 10
+                    }}
+                  >
+                    ({formatRecord(game.away)})
+                  </Typography>
+                </>
+              )}
+            </Stack>
 
-        {/* Home Team */}
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Box
-            component="img"
-            src={game.home.logo}
-            alt={game.home.abbreviation}
-            sx={{ width: 20, height: 20, objectFit: 'contain' }}
-          />
-          <Typography 
-            variant="body2" 
-            fontWeight={homeWinning && hasStarted ? 700 : 400}
-            sx={{ flexGrow: 1 }}
-            noWrap
-          >
-            {game.home.abbreviation}
-          </Typography>
-          {hasStarted && (
-            <Typography 
-              variant="body2" 
-              fontWeight={homeWinning ? 700 : 400}
-              sx={{ minWidth: 24, textAlign: 'right' }}
-            >
-              {game.home_score ?? 0}
-            </Typography>
-          )}
-        </Stack>
+            {/* Home Team - Mobile */}
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <TeamLogo logo={game.home.logo} alt={game.home.abbreviation} size={24} />
+              <Typography 
+                variant="body2" 
+                fontWeight={homeWinning && hasStarted ? 700 : 400}
+                sx={{ flexGrow: 1 }}
+                noWrap
+              >
+                {game.home.abbreviation}
+              </Typography>
+              {hasStarted && (
+                <>
+                  <Typography 
+                    variant="body2" 
+                    fontWeight={homeWinning ? 700 : 400}
+                    sx={{ minWidth: 24, textAlign: 'right' }}
+                  >
+                    {game.home_score ?? 0}
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    sx={{ 
+                      color: getRecordColor(game.home.wins, game.home.losses, game.home.ties),
+                      minWidth: 40,
+                      fontSize: 10
+                    }}
+                  >
+                    ({formatRecord(game.home)})
+                  </Typography>
+                </>
+              )}
+            </Stack>
+          </>
+        )}
+
+        {/* DESKTOP LAYOUT */}
+        {!isMobile && (
+          <>
+            {/* Away Team - Desktop */}
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+              <TeamLogo logo={game.away.logo} alt={game.away.short_name} size={20} />
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography 
+                  variant="body2" 
+                  fontWeight={awayWinning && hasStarted ? 700 : 400}
+                  noWrap
+                >
+                  {game.away.short_name}
+                </Typography>
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    color: getRecordColor(game.away.wins, game.away.losses, game.away.ties),
+                    display: 'block',
+                    fontSize: 10,
+                    lineHeight: 1
+                  }}
+                >
+                  {formatRecord(game.away)}
+                </Typography>
+              </Box>
+              {hasStarted && (
+                <Typography 
+                  variant="body2" 
+                  fontWeight={awayWinning ? 700 : 400}
+                  sx={{ minWidth: 24, textAlign: 'right' }}
+                >
+                  {game.away_score ?? 0}
+                </Typography>
+              )}
+            </Stack>
+
+            {/* Home Team - Desktop */}
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <TeamLogo logo={game.home.logo} alt={game.home.short_name} size={20} />
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography 
+                  variant="body2" 
+                  fontWeight={homeWinning && hasStarted ? 700 : 400}
+                  noWrap
+                >
+                  {game.home.short_name}
+                </Typography>
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    color: getRecordColor(game.home.wins, game.home.losses, game.home.ties),
+                    display: 'block',
+                    fontSize: 10,
+                    lineHeight: 1
+                  }}
+                >
+                  {formatRecord(game.home)}
+                </Typography>
+              </Box>
+              {hasStarted && (
+                <Typography 
+                  variant="body2" 
+                  fontWeight={homeWinning ? 700 : 400}
+                  sx={{ minWidth: 24, textAlign: 'right' }}
+                >
+                  {game.home_score ?? 0}
+                </Typography>
+              )}
+            </Stack>
+          </>
+        )}
 
         {/* Time for upcoming games */}
         {!hasStarted && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, textAlign: 'center' }}>
+          <Typography 
+            variant="caption" 
+            color="text.secondary" 
+            sx={{ display: 'block', mt: 1, textAlign: 'center' }}
+          >
             {gameTime.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
           </Typography>
         )}
@@ -187,7 +331,7 @@ export default function NFLScores() {
           </Typography>
           <Chip label={games.length} size="small" sx={{ height: 18, fontSize: 11 }} />
         </Stack>
-        <Stack spacing={0.75}>
+        <Stack spacing={1}>
           {games.map((game) => (
             <GameRow key={game.id} game={game} />
           ))}
