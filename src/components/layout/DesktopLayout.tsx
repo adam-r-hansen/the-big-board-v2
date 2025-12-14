@@ -123,7 +123,7 @@ export default function DesktopLayout({ children }: Props) {
       .eq('week', weekToLoad)
       .lt('game_utc', now.toISOString());
     
-    setAnyGamesLocked(lockedGames && lockedGames.length > 0);
+    setAnyGamesLocked(!!(lockedGames && lockedGames.length > 0));
 
     // Get user's picks with team and game info
     const { data: allPicks } = await supabase
@@ -585,7 +585,7 @@ export default function DesktopLayout({ children }: Props) {
     if (!acc[name]) acc[name] = [];
     acc[name].push(pick);
     return acc;
-  }, {} as Record<string, Pick[]>);
+  }, {} as Record<string, AllPick[]>);
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>

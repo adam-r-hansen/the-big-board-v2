@@ -81,7 +81,7 @@ type WrinklePick = {
   id: string;
   wrinkle_id: string;
   team_id: string;
-  game_id: string;
+  game_id: string | null;
   points: number;
   selection: any;
 };
@@ -375,11 +375,11 @@ export default function PicksPage() {
         // Change pick
         await supabase
           .from('wrinkle_picks_v2')
-          .update({ team_id: teamId, game_id: wrinkle.game.id })
+          .update({ team_id: teamId, game_id: wrinkle.game?.id || null })
           .eq('id', existingPick.id);
         setWrinklePicks(
           wrinklePicks.map((p) =>
-            p.id === existingPick.id ? { ...p, team_id: teamId, game_id: wrinkle.game.id } : p
+            p.id === existingPick.id ? { ...p, team_id: teamId, game_id: wrinkle.game?.id || null } : p
           )
         );
       }
@@ -391,7 +391,7 @@ export default function PicksPage() {
           wrinkle_id: wrinkle.id,
           profile_id: userId,
           team_id: teamId,
-          game_id: wrinkle.game.id,
+          game_id: wrinkle.game?.id || null,
           selection: { team_id: teamId },
         })
         .select()

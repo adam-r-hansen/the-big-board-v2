@@ -85,6 +85,21 @@ export default function Standings() {
 
     console.log('Picks query:', { allPicks: allPicks?.length });
 
+    // FIXED: Get all wrinkle picks for this league season
+    const { data: allWrinklePicks } = await supabase
+      .from('wrinkle_picks_v2')
+      .select(`
+        profile_id,
+        points,
+        wrinkles_v2!inner(
+          week,
+          league_season_id
+        )
+      `)
+      .eq('wrinkles_v2.league_season_id', leagueSeasonId);
+
+    console.log('Wrinkle picks query:', { allWrinklePicks: allWrinklePicks?.length });
+
     // Calculate standings
     const standingsMap = new Map<string, Standing>();
 
@@ -130,12 +145,31 @@ export default function Standings() {
       }
 
       // Update teams_used count
-      teamsPerUser.forEach((teams, odId) => {
-        const standing = standingsMap.get(odId);
+      teamsPerUser.forEach((teams, profileId) => {
+        const standing = standingsMap.get(profileId);
         if (standing) {
           standing.teams_used = teams.size;
         }
       });
+    }
+
+    // FIXED: Add wrinkle pick points to standings
+    if (allWrinklePicks) {
+      for (const pick of allWrinklePicks) {
+        const standing = standingsMap.get(pick.profile_id);
+        if (!standing) continue;
+
+        const wrinkleData = pick.wrinkles_v2 as any;
+        const wrinkleWeek = wrinkleData?.week;
+        
+        // Add wrinkle points to total
+        standing.total_points += pick.points || 0;
+        
+        // Add to week points if it's from current week
+        if (wrinkleWeek === week) {
+          standing.week_points += pick.points || 0;
+        }
+      }
     }
 
     // Sort by points descending

@@ -31,6 +31,16 @@ interface Props {
   children: ReactNode;
 }
 
+type TeamRow = {
+  color_primary: string | null;
+  color_secondary: string | null;
+};
+
+type ProfileRow = {
+  use_team_theme: boolean | null;
+  favorite_team: TeamRow[] | null;
+};
+
 export default function ThemeProvider({ children }: Props) {
   const [mode, setMode] = useState<ThemeMode>('auto');
   const [resolvedMode, setResolvedMode] = useState<'light' | 'dark'>('light');
@@ -42,7 +52,10 @@ export default function ThemeProvider({ children }: Props) {
   // Load team colors from user profile
   const refreshTeamColors = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (!user) {
         setTeamColors(null);
         return;
@@ -50,15 +63,22 @@ export default function ThemeProvider({ children }: Props) {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select(`
+        .select(
+          `
           use_team_theme,
           favorite_team:teams(color_primary, color_secondary)
-        `)
+        `
+        )
         .eq('id', user.id)
-        .single();
+        .single<ProfileRow>();
 
-      if (profile?.use_team_theme && profile?.favorite_team) {
-        const team = profile.favorite_team as { color_primary: string; color_secondary: string };
+      const team = profile?.favorite_team?.[0];
+
+      if (
+        profile?.use_team_theme &&
+        team?.color_primary &&
+        team?.color_secondary
+      ) {
         setTeamColors({
           primary: team.color_primary,
           secondary: team.color_secondary,
@@ -75,7 +95,7 @@ export default function ThemeProvider({ children }: Props) {
   // Initial load
   useEffect(() => {
     setMounted(true);
-    
+
     // Load saved theme preference
     const saved = localStorage.getItem('themeMode') as ThemeMode | null;
     if (saved) {
@@ -86,7 +106,9 @@ export default function ThemeProvider({ children }: Props) {
     refreshTeamColors();
 
     // Listen for auth changes to reload team colors
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN') {
         refreshTeamColors();
       } else if (event === 'SIGNED_OUT') {
@@ -131,19 +153,20 @@ export default function ThemeProvider({ children }: Props) {
   };
 
   // Create theme with team colors
-  const theme = resolvedMode === 'dark' 
-    ? createDarkTheme(teamColors) 
-    : createLightTheme(teamColors);
+  const theme =
+    resolvedMode === 'dark' ? createDarkTheme(teamColors) : createLightTheme(teamColors);
 
   return (
-    <ThemeContext.Provider value={{ 
-      mode, 
-      setMode: handleSetMode, 
-      resolvedMode,
-      teamColors,
-      setTeamColors,
-      refreshTeamColors,
-    }}>
+    <ThemeContext.Provider
+      value={{
+        mode,
+        setMode: handleSetMode,
+        resolvedMode,
+        teamColors,
+        setTeamColors,
+        refreshTeamColors,
+      }}
+    >
       <MUIThemeProvider theme={theme}>
         <CssBaseline />
         {children}

@@ -1,344 +1,129 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Box, Typography, Stack, CircularProgress, Chip, useMediaQuery, useTheme } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Box, Typography, Stack, Chip, useTheme, useMediaQuery } from '@mui/material';
 import { Circle } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 
-type Team = {
-  short_name: string;
-  abbreviation: string;
-  logo: string;
-  color_primary: string;
-  wins: number;
-  losses: number;
-  ties: number;
-};
+type GameStatus = 'LIVE' | 'UPCOMING' | 'FINAL';
 
 type Game = {
   id: string;
-  home_score: number | null;
-  away_score: number | null;
+  week: number;
+  season: number;
   game_utc: string;
   status: string;
-  home: Team;
-  away: Team;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  home_team_data: {
+    abbreviation: string;
+    short_name: string;
+    logo: string;
+    color_primary: string;
+    wins: number;
+    losses: number;
+    ties: number;
+  };
+  away_team_data: {
+    abbreviation: string;
+    short_name: string;
+    logo: string;
+    color_primary: string;
+    wins: number;
+    losses: number;
+    ties: number;
+  };
 };
 
+const statusOrder: Record<GameStatus, number> = {
+  LIVE: 0,
+  UPCOMING: 1,
+  FINAL: 2,
+};
+
+function toGameStatus(status: string): GameStatus | null {
+  if (status === 'LIVE' || status === 'UPCOMING' || status === 'FINAL') return status;
+  return null;
+}
+
 export default function NFLScores() {
-  const [loading, setLoading] = useState(true);
   const [games, setGames] = useState<Game[]>([]);
   const [currentWeek, setCurrentWeek] = useState(1);
-  
+  const [loading, setLoading] = useState(true);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const supabase = createClient();
 
-  // Helper to get record color
-  const getRecordColor = (wins: number, losses: number, ties: number) => {
-    const total = wins + losses + ties;
-    if (total === 0) return 'text.secondary';
-    const winPct = (wins + ties * 0.5) / total;
-    
-    if (winPct >= 0.700) return 'success.dark'; // Elite
-    if (winPct >= 0.500) return 'success.main'; // Playoff contender
-    if (winPct >= 0.400) return 'text.secondary'; // Below .500
-    return 'error.main'; // OOF territory or worse
-  };
-
-  // Helper to format record
-  const formatRecord = (team: Team) => {
-    if (team.ties > 0) {
-      return `${team.wins}-${team.losses}-${team.ties}`;
-    }
-    return `${team.wins}-${team.losses}`;
-  };
-
-  // Logo with white background container
-  const TeamLogo = ({ logo, alt, size = 20 }: { logo: string; alt: string; size?: number }) => (
-    <Box
-      sx={{
-        width: size + 4,
-        height: size + 4,
-        borderRadius: '50%',
-        bgcolor: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      }}
-    >
-      <Box
-        component="img"
-        src={logo}
-        alt={alt}
-        sx={{ width: size, height: size, objectFit: 'contain' }}
-      />
-    </Box>
-  );
-
   useEffect(() => {
-    const loadGames = async () => {
-      // Get current week
-      const now = new Date();
-      const { data: nextGame } = await supabase
-        .from('games')
-        .select('week')
-        .eq('season', 2025)
-        .gte('game_utc', now.toISOString())
-        .order('game_utc', { ascending: true })
-        .limit(1)
-        .single();
-
-      const week = nextGame?.week || 1;
-      setCurrentWeek(week);
-
-      // Get games for current week
-      const { data: weekGames } = await supabase
-        .from('games')
-        .select(`
-          id,
-          home_score,
-          away_score,
-          game_utc,
-          status,
-          home:teams!games_home_team_fkey(short_name, abbreviation, logo, color_primary, wins, losses, ties),
-          away:teams!games_away_team_fkey(short_name, abbreviation, logo, color_primary, wins, losses, ties)
-        `)
-        .eq('season', 2025)
-        .eq('week', week)
-        .order('game_utc', { ascending: true });
-
-      if (weekGames) {
-        setGames(weekGames as unknown as Game[]);
-      }
-      setLoading(false);
-    };
-
     loadGames();
-
-    // Refresh every 60 seconds for live scores
     const interval = setInterval(loadGames, 60000);
     return () => clearInterval(interval);
-  }, [supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  if (loading) {
-    return (
-      <Box sx={{ textAlign: 'center', py: 4 }}>
-        <CircularProgress size={24} />
-      </Box>
-    );
-  }
+  const loadGames = async () => {
+    const now = new Date();
 
-  // Group games by status
-  const liveGames = games.filter(g => g.status === 'LIVE' || g.status === 'IN_PROGRESS');
-  const finalGames = games.filter(g => g.status === 'FINAL');
-  const upcomingGames = games.filter(g => 
-    g.status !== 'FINAL' && g.status !== 'LIVE' && g.status !== 'IN_PROGRESS'
-  );
+    const { data: nextGame } = await supabase
+      .from('games')
+      .select('week')
+      .eq('season', 2025)
+      .gte('game_utc', now.toISOString())
+      .order('game_utc', { ascending: true })
+      .limit(1)
+      .single();
 
-  const GameRow = ({ game }: { game: Game }) => {
-    const gameTime = new Date(game.game_utc);
-    const isComplete = game.status === 'FINAL';
-    const isLive = game.status === 'LIVE' || game.status === 'IN_PROGRESS';
-    const hasStarted = isComplete || isLive;
+    const week = nextGame?.week || 1;
+    setCurrentWeek(week);
 
-    const homeWinning = (game.home_score ?? 0) > (game.away_score ?? 0);
-    const awayWinning = (game.away_score ?? 0) > (game.home_score ?? 0);
+    const { data } = await supabase
+      .from('games')
+      .select(
+        `
+        id,
+        week,
+        season,
+        game_utc,
+        status,
+        home_team,
+        away_team,
+        home_score,
+        away_score,
+        home_team_data:teams!games_home_team_fkey(abbreviation, short_name, logo, color_primary, wins, losses, ties),
+        away_team_data:teams!games_away_team_fkey(abbreviation, short_name, logo, color_primary, wins, losses, ties)
+      `
+      )
+      .eq('season', 2025)
+      .eq('week', week)
+      .order('game_utc', { ascending: true });
 
-    return (
-      <Box
-        sx={{
-          py: 1.5,
-          px: 1.5,
-          borderRadius: 1.5,
-          bgcolor: isLive ? 'error.main' : 'background.paper',
-          color: isLive ? 'white' : 'inherit',
-          border: 1,
-          borderColor: isLive ? 'error.main' : 'divider',
-        }}
-      >
-        {/* MOBILE LAYOUT */}
-        {isMobile && (
-          <>
-            {/* Away Team - Mobile */}
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
-              <TeamLogo logo={game.away.logo} alt={game.away.abbreviation} size={24} />
-              <Typography 
-                variant="body2" 
-                fontWeight={awayWinning && hasStarted ? 700 : 400}
-                sx={{ flexGrow: 1 }}
-                noWrap
-              >
-                {game.away.abbreviation}
-              </Typography>
-              {hasStarted && (
-                <>
-                  <Typography 
-                    variant="body2" 
-                    fontWeight={awayWinning ? 700 : 400}
-                    sx={{ minWidth: 24, textAlign: 'right' }}
-                  >
-                    {game.away_score ?? 0}
-                  </Typography>
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      color: getRecordColor(game.away.wins, game.away.losses, game.away.ties),
-                      minWidth: 40,
-                      fontSize: 10
-                    }}
-                  >
-                    ({formatRecord(game.away)})
-                  </Typography>
-                </>
-              )}
-            </Stack>
+    if (data) {
+      // Sort: LIVE first, then UPCOMING, then FINAL (unknown statuses go last)
+      const sortedGames = (data as unknown as Game[]).sort((a, b) => {
+        const aKey = toGameStatus(a.status);
+        const bKey = toGameStatus(b.status);
 
-            {/* Home Team - Mobile */}
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <TeamLogo logo={game.home.logo} alt={game.home.abbreviation} size={24} />
-              <Typography 
-                variant="body2" 
-                fontWeight={homeWinning && hasStarted ? 700 : 400}
-                sx={{ flexGrow: 1 }}
-                noWrap
-              >
-                {game.home.abbreviation}
-              </Typography>
-              {hasStarted && (
-                <>
-                  <Typography 
-                    variant="body2" 
-                    fontWeight={homeWinning ? 700 : 400}
-                    sx={{ minWidth: 24, textAlign: 'right' }}
-                  >
-                    {game.home_score ?? 0}
-                  </Typography>
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      color: getRecordColor(game.home.wins, game.home.losses, game.home.ties),
-                      minWidth: 40,
-                      fontSize: 10
-                    }}
-                  >
-                    ({formatRecord(game.home)})
-                  </Typography>
-                </>
-              )}
-            </Stack>
-          </>
-        )}
+        const aOrder = aKey ? statusOrder[aKey] : 99;
+        const bOrder = bKey ? statusOrder[bKey] : 99;
 
-        {/* DESKTOP LAYOUT */}
-        {!isMobile && (
-          <>
-            {/* Away Team - Desktop */}
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
-              <TeamLogo logo={game.away.logo} alt={game.away.short_name} size={20} />
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Typography 
-                  variant="body2" 
-                  fontWeight={awayWinning && hasStarted ? 700 : 400}
-                  noWrap
-                >
-                  {game.away.short_name}
-                </Typography>
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    color: getRecordColor(game.away.wins, game.away.losses, game.away.ties),
-                    display: 'block',
-                    fontSize: 10,
-                    lineHeight: 1
-                  }}
-                >
-                  {formatRecord(game.away)}
-                </Typography>
-              </Box>
-              {hasStarted && (
-                <Typography 
-                  variant="body2" 
-                  fontWeight={awayWinning ? 700 : 400}
-                  sx={{ minWidth: 24, textAlign: 'right' }}
-                >
-                  {game.away_score ?? 0}
-                </Typography>
-              )}
-            </Stack>
+        return aOrder - bOrder;
+      });
 
-            {/* Home Team - Desktop */}
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <TeamLogo logo={game.home.logo} alt={game.home.short_name} size={20} />
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Typography 
-                  variant="body2" 
-                  fontWeight={homeWinning && hasStarted ? 700 : 400}
-                  noWrap
-                >
-                  {game.home.short_name}
-                </Typography>
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    color: getRecordColor(game.home.wins, game.home.losses, game.home.ties),
-                    display: 'block',
-                    fontSize: 10,
-                    lineHeight: 1
-                  }}
-                >
-                  {formatRecord(game.home)}
-                </Typography>
-              </Box>
-              {hasStarted && (
-                <Typography 
-                  variant="body2" 
-                  fontWeight={homeWinning ? 700 : 400}
-                  sx={{ minWidth: 24, textAlign: 'right' }}
-                >
-                  {game.home_score ?? 0}
-                </Typography>
-              )}
-            </Stack>
-          </>
-        )}
+      setGames(sortedGames);
+    }
 
-        {/* Time for upcoming games */}
-        {!hasStarted && (
-          <Typography 
-            variant="caption" 
-            color="text.secondary" 
-            sx={{ display: 'block', mt: 1, textAlign: 'center' }}
-          >
-            {gameTime.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
-          </Typography>
-        )}
-      </Box>
-    );
+    setLoading(false);
   };
 
-  const GameSection = ({ title, games, icon }: { title: string; games: Game[]; icon?: React.ReactNode }) => {
-    if (games.length === 0) return null;
-
-    return (
-      <Box sx={{ mb: 2 }}>
-        <Stack direction="row" alignItems="center" gap={0.5} sx={{ mb: 1 }}>
-          {icon}
-          <Typography variant="caption" fontWeight={600} color="text.secondary">
-            {title}
-          </Typography>
-          <Chip label={games.length} size="small" sx={{ height: 18, fontSize: 11 }} />
-        </Stack>
-        <Stack spacing={1}>
-          {games.map((game) => (
-            <GameRow key={game.id} game={game} />
-          ))}
-        </Stack>
-      </Box>
-    );
+  const formatRecord = (wins: number, losses: number, ties: number) => {
+    if (ties > 0) return `${wins}-${losses}-${ties}`;
+    return `${wins}-${losses}`;
   };
+
+  const liveGames = games.filter((g) => g.status === 'LIVE');
 
   return (
     <Box>
@@ -349,18 +134,155 @@ export default function NFLScores() {
         <Chip label={`Week ${currentWeek}`} size="small" color="primary" />
       </Stack>
 
-      <GameSection 
-        title="LIVE" 
-        games={liveGames} 
-        icon={<Circle sx={{ fontSize: 8, color: 'error.main', animation: 'pulse 1.5s infinite' }} />}
-      />
-      <GameSection title="UPCOMING" games={upcomingGames} />
-      <GameSection title="FINAL" games={finalGames} />
+      {liveGames.length > 0 && (
+        <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 2 }}>
+          <Circle sx={{ fontSize: 12, color: 'error.main' }} />
+          <Typography variant="caption" fontWeight={600} color="error.main">
+            LIVE
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {liveGames.length}
+          </Typography>
+        </Stack>
+      )}
 
-      {games.length === 0 && (
-        <Typography variant="body2" color="text.disabled" sx={{ textAlign: 'center', py: 4 }}>
-          No games this week
+      {loading ? (
+        <Typography variant="body2" color="text.secondary">
+          Loading...
         </Typography>
+      ) : (
+        <Stack spacing={2}>
+          {games.map((game) => {
+            const isLive = game.status === 'LIVE';
+            const isFinal = game.status === 'FINAL';
+            const gameTime = new Date(game.game_utc);
+
+            return (
+              <Box
+                key={game.id}
+                sx={{
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Away Team */}
+                <Box
+                  sx={{
+                    bgcolor: game.away_team_data.color_primary,
+                    color: 'white',
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: '50%',
+                      bgcolor: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={game.away_team_data.logo}
+                      alt={game.away_team_data.abbreviation}
+                      sx={{ width: 32, height: 32, objectFit: 'contain' }}
+                    />
+                  </Box>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body1" fontWeight={700}>
+                      {isMobile ? game.away_team_data.abbreviation : game.away_team_data.short_name}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                      {formatRecord(
+                        game.away_team_data.wins,
+                        game.away_team_data.losses,
+                        game.away_team_data.ties
+                      )}
+                    </Typography>
+                  </Box>
+                  {(isLive || isFinal) && game.away_score !== null && (
+                    <Typography variant="h4" fontWeight={700}>
+                      {game.away_score}
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Home Team */}
+                <Box
+                  sx={{
+                    bgcolor: game.home_team_data.color_primary,
+                    color: 'white',
+                    p: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: '50%',
+                      bgcolor: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={game.home_team_data.logo}
+                      alt={game.home_team_data.abbreviation}
+                      sx={{ width: 32, height: 32, objectFit: 'contain' }}
+                    />
+                  </Box>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body1" fontWeight={700}>
+                      {isMobile ? game.home_team_data.abbreviation : game.home_team_data.short_name}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                      {formatRecord(
+                        game.home_team_data.wins,
+                        game.home_team_data.losses,
+                        game.home_team_data.ties
+                      )}
+                    </Typography>
+                  </Box>
+                  {(isLive || isFinal) && game.home_score !== null && (
+                    <Typography variant="h4" fontWeight={700}>
+                      {game.home_score}
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Game Status */}
+                <Box sx={{ bgcolor: 'background.paper', p: 1, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {isFinal
+                      ? 'FINAL'
+                      : isLive
+                      ? 'LIVE'
+                      : gameTime.toLocaleString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                  </Typography>
+                </Box>
+              </Box>
+            );
+          })}
+        </Stack>
       )}
     </Box>
   );

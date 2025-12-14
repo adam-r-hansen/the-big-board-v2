@@ -102,29 +102,57 @@ export default function Home() {
 
     setTotalMembers(count || 1);
 
+    // Get regular picks for this user
     const { data: userPicks } = await supabase
       .from('picks_v2')
       .select('team_id, points')
       .eq('league_season_id', leagueSeasonId)
       .eq('profile_id', userId);
 
+    // FIXED: Get wrinkle picks for this user
+    const { data: userWrinklePicks } = await supabase
+      .from('wrinkle_picks_v2')
+      .select('points, wrinkles_v2!inner(league_season_id)')
+      .eq('profile_id', userId)
+      .eq('wrinkles_v2.league_season_id', leagueSeasonId);
+
     if (userPicks) {
       const usedTeamCount = new Set(userPicks.map(p => p.team_id)).size;
       setTeamsRemaining(32 - usedTeamCount);
-      setSeasonPoints(userPicks.reduce((sum, p) => sum + (p.points || 0), 0));
+      
+      // FIXED: Calculate total points including wrinkles
+      const regularPoints = userPicks.reduce((sum, p) => sum + (p.points || 0), 0);
+      const wrinklePoints = (userWrinklePicks || []).reduce((sum, p) => sum + (p.points || 0), 0);
+      setSeasonPoints(regularPoints + wrinklePoints);
     }
 
+    // Get all regular picks for standings calculation
     const { data: allPicks } = await supabase
       .from('picks_v2')
       .select('profile_id, points')
       .eq('league_season_id', leagueSeasonId);
 
+    // FIXED: Get all wrinkle picks for standings calculation
+    const { data: allWrinklePicks } = await supabase
+      .from('wrinkle_picks_v2')
+      .select('profile_id, points, wrinkles_v2!inner(league_season_id)')
+      .eq('wrinkles_v2.league_season_id', leagueSeasonId);
+
     if (allPicks) {
       const pointsMap = new Map<string, number>();
+      
+      // Add regular pick points
       allPicks.forEach(pick => {
         const current = pointsMap.get(pick.profile_id) || 0;
         pointsMap.set(pick.profile_id, current + (pick.points || 0));
       });
+      
+      // FIXED: Add wrinkle pick points
+      (allWrinklePicks || []).forEach(pick => {
+        const current = pointsMap.get(pick.profile_id) || 0;
+        pointsMap.set(pick.profile_id, current + (pick.points || 0));
+      });
+      
       const sorted = Array.from(pointsMap.entries()).sort((a, b) => b[1] - a[1]);
       const rank = sorted.findIndex(([id]) => id === userId) + 1;
       setUserRank(rank || null);
