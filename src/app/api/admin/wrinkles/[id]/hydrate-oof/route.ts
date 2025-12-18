@@ -144,6 +144,14 @@ export async function POST(
       return json({ error: uErr.message, hint: 'upsert failed' }, 500)
     }
 
+    // Store OOF team IDs in wrinkle config for frontend filtering
+    await sb
+      .from('wrinkles_v2')
+      .update({ 
+        config: { oof_team_ids: oofTeams }
+      })
+      .eq('id', wrinkleId)
+
     return json({
       ok: true,
       season,

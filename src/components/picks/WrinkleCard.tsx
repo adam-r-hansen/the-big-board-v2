@@ -1,6 +1,7 @@
 'use client';
 
-import { Box, Paper, Typography, Chip, ButtonBase } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Box, Paper, Typography, Chip, ButtonBase, CircularProgress, Grid } from '@mui/material';
 import { Stars, CheckCircle, Add, Lock } from '@mui/icons-material';
 
 type Team = {
@@ -50,6 +51,171 @@ interface Props {
 }
 
 export default function WrinkleCard({ wrinkle, pick, onSelectTeam, disabled }: Props) {
+  const [oofGames, setOofGames] = useState<Game[]>([]);
+  const [loadingGames, setLoadingGames] = useState(false);
+
+  // Load all games for OOF wrinkles
+  useEffect(() => {
+    if (wrinkle.kind !== 'bonus_game_oof') return;
+    
+    const loadOofGames = async () => {
+      setLoadingGames(true);
+      try {
+        const res = await fetch(`/api/wrinkles/${wrinkle.id}/games`);
+        const data = await res.json();
+        if (data.games) {
+          setOofGames(data.games);
+        }
+      } catch (err) {
+        console.error('Failed to load OOF games:', err);
+      } finally {
+        setLoadingGames(false);
+      }
+    };
+
+    loadOofGames();
+  }, [wrinkle.id, wrinkle.kind]);
+
+  // Handle OOF wrinkles with multiple games
+  if (wrinkle.kind === 'bonus_game_oof') {
+    return (
+      <Paper
+        elevation={2}
+        sx={{
+          borderRadius: 2,
+          overflow: 'hidden',
+          border: 2,
+          borderColor: 'secondary.main',
+          bgcolor: 'background.paper',
+        }}
+      >
+        {/* Header */}
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            bgcolor: 'secondary.main',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Stars fontSize="small" />
+            <Typography variant="subtitle2" fontWeight={700}>
+              {wrinkle.name}
+            </Typography>
+          </Box>
+          <Chip
+            label="Bonus Pick"
+            size="small"
+            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', height: 22 }}
+          />
+        </Box>
+
+        <Box sx={{ p: 2 }}>
+          {loadingGames ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : oofGames.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No eligible teams found for this week
+            </Typography>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Pick ONE team from the options below (teams with win % below .400)
+              </Typography>
+              <Grid container spacing={1}>
+                {oofGames.flatMap(game => [
+                  { game, team: game.home, isHome: true },
+                  { game, team: game.away, isHome: false }
+                ])
+                .filter(({ team }) => {
+                  // Only show teams that are actually OOF
+                  const oofTeamIds = wrinkle.config?.oof_team_ids || [];
+                  return oofTeamIds.includes(team.id);
+                })
+                .map(({ game, team, isHome }) => {
+                  const isSelected = pick?.team_id === team.id;
+                  const gameTime = new Date(game.game_utc);
+                  const isLocked = gameTime < new Date();
+                  const isComplete = game.status === 'FINAL';
+                  const score = isHome ? game.home_score : game.away_score;
+                  const opponentScore = isHome ? game.away_score : game.home_score;
+                  const isWinning = (score ?? 0) > (opponentScore ?? 0);
+                  const canSelect = !isLocked && !disabled;
+
+                  return (
+                    <Grid item xs={6} sm={4} md={3} key={`${game.id}-${team.id}`}>
+                      <ButtonBase
+                        onClick={() => canSelect && onSelectTeam(team.id)}
+                        disabled={!canSelect}
+                        sx={{
+                          width: '100%',
+                          p: 1.5,
+                          borderRadius: 1,
+                          border: 2,
+                          borderColor: isSelected 
+                            ? isComplete 
+                              ? (isWinning ? 'success.main' : 'error.main')
+                              : 'secondary.main'
+                            : 'grey.300',
+                          bgcolor: isSelected ? 'action.selected' : 'transparent',
+                          transition: 'all 0.15s',
+                          '&:hover': canSelect ? { 
+                            borderColor: 'secondary.light',
+                            bgcolor: 'action.hover' 
+                          } : {},
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        <Box
+                          component="img"
+                          src={team.logo}
+                          alt={team.abbreviation}
+                          sx={{ width: 32, height: 32, objectFit: 'contain' }}
+                        />
+                        <Typography variant="caption" fontWeight={isSelected ? 700 : 500}>
+                          {team.abbreviation}
+                        </Typography>
+                        {isComplete && score !== null && (
+                          <Typography 
+                            variant="caption" 
+                            fontWeight={700}
+                            color={isSelected ? (isWinning ? 'success.main' : 'error.main') : 'text.secondary'}
+                          >
+                            {score}
+                          </Typography>
+                        )}
+                        {isSelected && !isComplete && <CheckCircle color="secondary" fontSize="small" />}
+                      </ButtonBase>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </>
+          )}
+        </Box>
+
+        {/* Points earned */}
+        {pick && oofGames.some(g => g.status === 'FINAL') && (
+          <Box sx={{ px: 2, py: 1, bgcolor: pick.points > 0 ? 'success.light' : 'error.light' }}>
+            <Typography variant="body2" fontWeight={700} color={pick.points > 0 ? 'success.dark' : 'error.dark'}>
+              {pick.points > 0 ? `+${pick.points} bonus points!` : 'No bonus points'}
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+    );
+  }
+
+  // Standard wrinkle handling (bonus_game, bonus_game_ats, etc.)
   const { game } = wrinkle;
   
   // If no game attached (like winless_double), don't render as a game card
