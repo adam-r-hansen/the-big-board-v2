@@ -353,12 +353,19 @@ export default function PicksPage() {
 
   // Handle wrinkle pick
   const handleWrinklePick = async (wrinkle: Wrinkle, teamId: string) => {
-    if (!userId || saving || !wrinkle.game) return;
+    if (!userId || saving) return;
 
-    const gameTime = new Date(wrinkle.game.game_utc);
-    if (gameTime < new Date()) {
-      setError('This wrinkle game has already started');
-      return;
+    // For OOF wrinkles, we don't check a single game lock time
+    // The component already checks if teams are locked
+    if (wrinkle.kind !== 'bonus_game_oof' && !wrinkle.game) return;
+
+    // Check lock time for non-OOF wrinkles
+    if (wrinkle.kind !== 'bonus_game_oof' && wrinkle.game) {
+      const gameTime = new Date(wrinkle.game.game_utc);
+      if (gameTime < new Date()) {
+        setError('This wrinkle game has already started');
+        return;
+      }
     }
 
     setSaving(true);
