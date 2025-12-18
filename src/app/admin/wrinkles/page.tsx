@@ -57,6 +57,7 @@ type Wrinkle = {
 const WRINKLE_TYPES = [
   { value: 'bonus_game', label: 'Bonus Game', description: 'Pick a team to win, earn their score as bonus points' },
   { value: 'bonus_game_ats', label: 'Bonus Game ATS', description: 'Pick a team against the spread' },
+  { value: 'bonus_game_oof', label: 'Bonus Game OOF', description: 'Pick from teams with win % below .400' },
   { value: 'bonus_game_ou', label: 'Over/Under', description: 'Pick over or under on total points' },
   { value: 'winless_double', label: 'Winless Double', description: 'Double down on a winless team' },
 ];
@@ -72,7 +73,7 @@ export default function WrinklesAdminPage() {
   const [selectedLeague, setSelectedLeague] = useState('');
 
   // Form state
-  const [week, setWeek] = useState(14);
+  const [week, setWeek] = useState(16);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('bonus_game');
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -158,53 +159,86 @@ export default function WrinklesAdminPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedLeague || !selectedGame) return;
+    
+    // OOF wrinkles don't need a selected game
+    if (kind !== 'bonus_game_oof' && !selectedGame) return;
+    if (!selectedLeague) return;
 
     setSaving(true);
     setMessage(null);
 
-    // Build config based on wrinkle type
-    const config: any = {};
-    if (kind === 'bonus_game_ou' && overUnderTotal) {
-      config.total = overUnderTotal;
-    }
+    try {
+      // Build config based on wrinkle type
+      const config: any = {};
+      if (kind === 'bonus_game_ou' && overUnderTotal) {
+        config.total = overUnderTotal;
+      }
 
-    const { data, error } = await supabase
-      .from('wrinkles_v2')
-      .insert({
-        league_season_id: selectedLeague,
-        week,
-        name,
-        kind,
-        game_id: selectedGame.id,
-        spread: kind === 'bonus_game_ats' ? spread : null,
-        spread_team_id: kind === 'bonus_game_ats' ? spreadTeam : null,
-        status: 'active',
-        config,
-      })
-      .select(`
-        *,
-        game:games(
-          id,
+      const { data, error } = await supabase
+        .from('wrinkles_v2')
+        .insert({
+          league_season_id: selectedLeague,
           week,
-          game_utc,
-          home:teams!games_home_team_fkey(id, short_name, abbreviation),
-          away:teams!games_away_team_fkey(id, short_name, abbreviation)
-        )
-      `)
-      .single();
+          name,
+          kind,
+          game_id: kind === 'bonus_game_oof' ? null : selectedGame?.id,
+          spread: kind === 'bonus_game_ats' ? spread : null,
+          spread_team_id: kind === 'bonus_game_ats' ? spreadTeam : null,
+          status: 'active',
+          config,
+        })
+        .select(`
+          *,
+          game:games(
+            id,
+            week,
+            game_utc,
+            home:teams!games_home_team_fkey(id, short_name, abbreviation),
+            away:teams!games_away_team_fkey(id, short_name, abbreviation)
+          )
+        `)
+        .single();
 
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-    } else {
-      setMessage({ type: 'success', text: 'Wrinkle created!' });
+      if (error) {
+        setMessage({ type: 'error', text: error.message });
+        setSaving(false);
+        return;
+      }
+
+      // If OOF wrinkle, auto-hydrate with all OOF team games
+      if (kind === 'bonus_game_oof') {
+        const hydrateRes = await fetch(`/api/admin/wrinkles/${data.id}/hydrate-oof`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const hydrateData = await hydrateRes.json();
+        
+        if (!hydrateRes.ok) {
+          setMessage({ type: 'error', text: `Wrinkle created but hydration failed: ${hydrateData.error}` });
+          setSaving(false);
+          return;
+        }
+
+        setMessage({ 
+          type: 'success', 
+          text: `OOF Wrinkle created! Hydrated ${hydrateData.gamesHydrated} games for ${hydrateData.oofTeams?.length || 0} OOF teams.` 
+        });
+      } else {
+        setMessage({ type: 'success', text: 'Wrinkle created!' });
+      }
+
       setWrinkles([...wrinkles, data as unknown as Wrinkle]);
+      
       // Reset form
       setName('');
       setSelectedGame(null);
       setSpread(null);
       setSpreadTeam('');
       setOverUnderTotal(null);
+
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to create wrinkle' });
     }
 
     setSaving(false);
@@ -335,16 +369,25 @@ export default function WrinklesAdminPage() {
                   placeholder="e.g., Sunday Night Bonus"
                 />
 
-                {/* Game Selection */}
-                <Autocomplete
-                  options={games}
-                  getOptionLabel={getGameLabel}
-                  value={selectedGame}
-                  onChange={(_, value) => setSelectedGame(value)}
-                  renderInput={(params) => (
-                    <TextField {...params} label="Game" size="small" required />
-                  )}
-                />
+                {/* Game Selection - Not needed for OOF */}
+                {kind !== 'bonus_game_oof' && (
+                  <Autocomplete
+                    options={games}
+                    getOptionLabel={getGameLabel}
+                    value={selectedGame}
+                    onChange={(_, value) => setSelectedGame(value)}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Game" size="small" required />
+                    )}
+                  />
+                )}
+
+                {/* OOF Note */}
+                {kind === 'bonus_game_oof' && (
+                  <Alert severity="info">
+                    OOF wrinkles automatically include all games for teams with win % below .400. No game selection needed.
+                  </Alert>
+                )}
 
                 {/* ATS: Spread */}
                 {kind === 'bonus_game_ats' && selectedGame && (
@@ -394,10 +437,10 @@ export default function WrinklesAdminPage() {
                 <Button
                   type="submit"
                   variant="contained"
-                  disabled={saving || !selectedGame || !name}
+                  disabled={saving || !selectedLeague || (!selectedGame && kind !== 'bonus_game_oof') || !name}
                   startIcon={saving ? <CircularProgress size={20} /> : <Add />}
                 >
-                  Create Wrinkle
+                  {saving ? 'Creating...' : 'Create Wrinkle'}
                 </Button>
               </Stack>
             </Box>
@@ -439,6 +482,7 @@ export default function WrinklesAdminPage() {
                           Week {wrinkle.week}
                           {wrinkle.game && ` • ${wrinkle.game.away.abbreviation} @ ${wrinkle.game.home.abbreviation}`}
                           {wrinkle.spread && ` • Spread: ${wrinkle.spread}`}
+                          {wrinkle.kind === 'bonus_game_oof' && ' • Auto-hydrated OOF teams'}
                         </>
                       }
                     />
