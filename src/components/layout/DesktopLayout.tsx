@@ -708,7 +708,3 @@ export default function DesktopLayout({ children }: Props) {
     </Box>
   );
 }
-      {/* Center - Main Content */}
-      <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
-        {children}
-      </Box>
