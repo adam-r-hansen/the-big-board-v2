@@ -57,7 +57,6 @@ type Wrinkle = {
 const WRINKLE_TYPES = [
   { value: 'bonus_game', label: 'Bonus Game', description: 'Pick a team to win, earn their score as bonus points' },
   { value: 'bonus_game_ats', label: 'Bonus Game ATS', description: 'Pick a team against the spread' },
-  { value: 'bonus_game_oof', label: 'Bonus Game OOF', description: 'Pick from teams with win % below .400' },
   { value: 'bonus_game_ou', label: 'Over/Under', description: 'Pick over or under on total points' },
   { value: 'winless_double', label: 'Winless Double', description: 'Double down on a winless team' },
 ];
@@ -73,7 +72,7 @@ export default function WrinklesAdminPage() {
   const [selectedLeague, setSelectedLeague] = useState('');
 
   // Form state
-  const [week, setWeek] = useState(16);
+  const [week, setWeek] = useState(14);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('bonus_game');
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -97,7 +96,7 @@ export default function WrinklesAdminPage() {
           season,
           leagues_v2 (id, name)
         `)
-        .order('created_at', { ascending: false});
+        .order('created_at', { ascending: false });
 
       setLeagues(data || []);
       if (data && data.length > 0) {
@@ -159,86 +158,53 @@ export default function WrinklesAdminPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedLeague) return;
-    
-    // For OOF, we don't need a selected game
-    if (kind !== 'bonus_game_oof' && !selectedGame) return;
+    if (!selectedLeague || !selectedGame) return;
 
     setSaving(true);
     setMessage(null);
 
-    try {
-      // Build config based on wrinkle type
-      const config: any = {};
-      if (kind === 'bonus_game_ou' && overUnderTotal) {
-        config.total = overUnderTotal;
-      }
+    // Build config based on wrinkle type
+    const config: any = {};
+    if (kind === 'bonus_game_ou' && overUnderTotal) {
+      config.total = overUnderTotal;
+    }
 
-      const { data, error } = await supabase
-        .from('wrinkles_v2')
-        .insert({
-          league_season_id: selectedLeague,
+    const { data, error } = await supabase
+      .from('wrinkles_v2')
+      .insert({
+        league_season_id: selectedLeague,
+        week,
+        name,
+        kind,
+        game_id: selectedGame.id,
+        spread: kind === 'bonus_game_ats' ? spread : null,
+        spread_team_id: kind === 'bonus_game_ats' ? spreadTeam : null,
+        status: 'active',
+        config,
+      })
+      .select(`
+        *,
+        game:games(
+          id,
           week,
-          name,
-          kind,
-          game_id: kind === 'bonus_game_oof' ? null : selectedGame?.id,
-          spread: kind === 'bonus_game_ats' ? spread : null,
-          spread_team_id: kind === 'bonus_game_ats' ? spreadTeam : null,
-          status: 'active',
-          config,
-        })
-        .select(`
-          *,
-          game:games(
-            id,
-            week,
-            game_utc,
-            home:teams!games_home_team_fkey(id, short_name, abbreviation),
-            away:teams!games_away_team_fkey(id, short_name, abbreviation)
-          )
-        `)
-        .single();
+          game_utc,
+          home:teams!games_home_team_fkey(id, short_name, abbreviation),
+          away:teams!games_away_team_fkey(id, short_name, abbreviation)
+        )
+      `)
+      .single();
 
-      if (error) {
-        setMessage({ type: 'error', text: error.message });
-        setSaving(false);
-        return;
-      }
-
-      // If OOF wrinkle, auto-hydrate with all OOF team games
-      if (kind === 'bonus_game_oof') {
-        const hydrateRes = await fetch(`/api/admin/wrinkles/${data.id}/hydrate-oof`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-
-        const hydrateData = await hydrateRes.json();
-        
-        if (!hydrateRes.ok) {
-          setMessage({ type: 'error', text: `Wrinkle created but hydration failed: ${hydrateData.error}` });
-          setSaving(false);
-          return;
-        }
-
-        setMessage({ 
-          type: 'success', 
-          text: `OOF Wrinkle created! Hydrated ${hydrateData.gamesHydrated} games for ${hydrateData.oofTeams?.length || 0} OOF teams.` 
-        });
-      } else {
-        setMessage({ type: 'success', text: 'Wrinkle created!' });
-      }
-
+    if (error) {
+      setMessage({ type: 'error', text: error.message });
+    } else {
+      setMessage({ type: 'success', text: 'Wrinkle created!' });
       setWrinkles([...wrinkles, data as unknown as Wrinkle]);
-      
       // Reset form
       setName('');
       setSelectedGame(null);
       setSpread(null);
       setSpreadTeam('');
       setOverUnderTotal(null);
-
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to create wrinkle' });
     }
 
     setSaving(false);
@@ -304,68 +270,72 @@ export default function WrinklesAdminPage() {
               Create Wrinkle
             </Typography>
 
-            <Stack spacing={2} component="form" onSubmit={handleCreate}>
-              {/* League Selection */}
-              <FormControl fullWidth size="small">
-                <InputLabel>League</InputLabel>
-                <Select
-                  value={selectedLeague}
-                  label="League"
-                  onChange={(e) => setSelectedLeague(e.target.value)}
-                >
-                  {leagues.map((ls: any) => (
-                    <MenuItem key={ls.id} value={ls.id}>
-                      {ls.leagues_v2?.name} ({ls.season})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Box component="form" onSubmit={handleCreate}>
+              <Stack spacing={2}>
+                {/* League Selection */}
+                <FormControl fullWidth size="small">
+                  <InputLabel>League</InputLabel>
+                  <Select
+                    value={selectedLeague}
+                    label="League"
+                    onChange={(e) => setSelectedLeague(e.target.value)}
+                  >
+                    {leagues.map((ls) => (
+                      <MenuItem key={ls.id} value={ls.id}>
+                        {ls.leagues_v2?.name} ({ls.season})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              {/* Week */}
-              <TextField
-                label="Week"
-                type="number"
-                size="small"
-                fullWidth
-                required
-                value={week}
-                onChange={(e) => setWeek(Number(e.target.value))}
-                inputProps={{ min: 1, max: 18 }}
-              />
+                {/* Week */}
+                <FormControl fullWidth size="small">
+                  <InputLabel>Week</InputLabel>
+                  <Select
+                    value={week}
+                    label="Week"
+                    onChange={(e) => setWeek(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 18 }, (_, i) => (
+                      <MenuItem key={i + 1} value={i + 1}>
+                        Week {i + 1}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              {/* Type */}
-              <FormControl fullWidth size="small">
-                <InputLabel>Type</InputLabel>
-                <Select
-                  value={kind}
-                  label="Type"
-                  onChange={(e) => setKind(e.target.value)}
-                >
-                  {WRINKLE_TYPES.map((type) => (
-                    <MenuItem key={type.value} value={type.value}>
-                      {type.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                {/* Wrinkle Type */}
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={kind}
+                    label="Type"
+                    onChange={(e) => setKind(e.target.value)}
+                  >
+                    {WRINKLE_TYPES.map((type) => (
+                      <MenuItem key={type.value} value={type.value}>
+                        {type.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              <Typography variant="caption" color="text.secondary">
-                {WRINKLE_TYPES.find(t => t.value === kind)?.description}
-              </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {WRINKLE_TYPES.find(t => t.value === kind)?.description}
+                </Typography>
 
-              {/* Name */}
-              <TextField
-                label="Wrinkle Name"
-                size="small"
-                fullWidth
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Sunday Night Bonus"
-              />
+                {/* Name */}
+                <TextField
+                  label="Wrinkle Name"
+                  size="small"
+                  fullWidth
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Sunday Night Bonus"
+                />
 
-              {/* Game Selection - Not needed for OOF */}
-              {kind !== 'bonus_game_oof' && (
+                {/* Game Selection */}
                 <Autocomplete
                   options={games}
                   getOptionLabel={getGameLabel}
@@ -375,69 +345,62 @@ export default function WrinklesAdminPage() {
                     <TextField {...params} label="Game" size="small" required />
                   )}
                 />
-              )}
 
-              {/* OOF Note */}
-              {kind === 'bonus_game_oof' && (
-                <Alert severity="info">
-                  OOF wrinkles automatically include all games for teams with win % below .400. No game selection needed.
-                </Alert>
-              )}
+                {/* ATS: Spread */}
+                {kind === 'bonus_game_ats' && selectedGame && (
+                  <>
+                    <TextField
+                      label="Spread"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      value={spread ?? ''}
+                      onChange={(e) => setSpread(Number(e.target.value))}
+                      placeholder="-3.5"
+                      inputProps={{ step: 0.5 }}
+                    />
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Favorite</InputLabel>
+                      <Select
+                        value={spreadTeam}
+                        label="Favorite"
+                        onChange={(e) => setSpreadTeam(e.target.value)}
+                      >
+                        <MenuItem value={selectedGame.home.id}>
+                          {selectedGame.home.short_name}
+                        </MenuItem>
+                        <MenuItem value={selectedGame.away.id}>
+                          {selectedGame.away.short_name}
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+                  </>
+                )}
 
-              {/* ATS: Spread */}
-              {kind === 'bonus_game_ats' && selectedGame && (
-                <>
+                {/* O/U: Total */}
+                {kind === 'bonus_game_ou' && (
                   <TextField
-                    label="Spread"
+                    label="Total Points Line"
                     type="number"
                     size="small"
                     fullWidth
-                    value={spread ?? ''}
-                    onChange={(e) => setSpread(Number(e.target.value))}
-                    placeholder="-3.5"
+                    value={overUnderTotal ?? ''}
+                    onChange={(e) => setOverUnderTotal(Number(e.target.value))}
+                    placeholder="45.5"
                     inputProps={{ step: 0.5 }}
                   />
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Favorite</InputLabel>
-                    <Select
-                      value={spreadTeam}
-                      label="Favorite"
-                      onChange={(e) => setSpreadTeam(e.target.value)}
-                    >
-                      <MenuItem value={selectedGame.home.id}>
-                        {selectedGame.home.short_name}
-                      </MenuItem>
-                      <MenuItem value={selectedGame.away.id}>
-                        {selectedGame.away.short_name}
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                </>
-              )}
+                )}
 
-              {/* O/U: Total */}
-              {kind === 'bonus_game_ou' && (
-                <TextField
-                  label="Total Points Line"
-                  type="number"
-                  size="small"
-                  fullWidth
-                  value={overUnderTotal ?? ''}
-                  onChange={(e) => setOverUnderTotal(Number(e.target.value))}
-                  placeholder="47.5"
-                  inputProps={{ step: 0.5 }}
-                />
-              )}
-
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={saving || !selectedLeague || (!selectedGame && kind !== 'bonus_game_oof')}
-                startIcon={saving ? <CircularProgress size={20} /> : <Add />}
-              >
-                {saving ? 'Creating...' : 'Create Wrinkle'}
-              </Button>
-            </Stack>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={saving || !selectedGame || !name}
+                  startIcon={saving ? <CircularProgress size={20} /> : <Add />}
+                >
+                  Create Wrinkle
+                </Button>
+              </Stack>
+            </Box>
           </Paper>
 
           {/* Existing Wrinkles */}
@@ -446,15 +409,14 @@ export default function WrinklesAdminPage() {
               Existing Wrinkles
             </Typography>
 
-            <List>
-              {wrinkles.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  No wrinkles created yet
-                </Typography>
-              ) : (
-                wrinkles.map((wrinkle) => (
+            {wrinkles.length === 0 ? (
+              <Typography color="text.secondary">No wrinkles yet</Typography>
+            ) : (
+              <List>
+                {wrinkles.map((wrinkle) => (
                   <ListItem
                     key={wrinkle.id}
+                    divider
                     secondaryAction={
                       <IconButton edge="end" onClick={() => handleDelete(wrinkle.id)}>
                         <Delete />
@@ -462,30 +424,28 @@ export default function WrinklesAdminPage() {
                     }
                   >
                     <ListItemText
-                      primary={wrinkle.name}
-                      secondary={
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Chip label={`Week ${wrinkle.week}`} size="small" />
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {wrinkle.name}
                           <Chip
-                            label={WRINKLE_TYPES.find(t => t.value === wrinkle.kind)?.label || wrinkle.kind}
+                            label={WRINKLE_TYPES.find(t => t.value === wrinkle.kind)?.label}
                             size="small"
-                            color="primary"
+                            color="secondary"
                           />
-                          {wrinkle.game && (
-                            <Typography variant="caption">
-                              {wrinkle.game.away.abbreviation} @ {wrinkle.game.home.abbreviation}
-                            </Typography>
-                          )}
-                          {wrinkle.kind === 'bonus_game_oof' && (
-                            <Chip label="Auto-hydrated" size="small" color="secondary" />
-                          )}
-                        </Stack>
+                        </Box>
+                      }
+                      secondary={
+                        <>
+                          Week {wrinkle.week}
+                          {wrinkle.game && ` • ${wrinkle.game.away.abbreviation} @ ${wrinkle.game.home.abbreviation}`}
+                          {wrinkle.spread && ` • Spread: ${wrinkle.spread}`}
+                        </>
                       }
                     />
                   </ListItem>
-                ))
-              )}
-            </List>
+                ))}
+              </List>
+            )}
           </Paper>
         </Box>
       </Container>
