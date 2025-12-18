@@ -5,6 +5,7 @@ import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress }
 import { EmojiEvents, TrendingUp, CalendarMonth, People, SportsFootball } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 import AppShell from '@/components/layout/AppShell';
+import Standings from '@/components/layout/Standings';
 import type { User } from '@supabase/supabase-js';
 
 type LeagueInfo = {
@@ -246,7 +247,7 @@ export default function Home() {
         </Box>
 
         {/* League Info */}
-        <Paper sx={{ p: 3 }}>
+        <Paper sx={{ p: 3, mb: 3 }}>
           <Stack direction="row" alignItems="center" sx={{ gap: 1, mb: 2 }}>
             <People color="action" />
             <Typography variant="h6" fontWeight={600}>
@@ -268,6 +269,9 @@ export default function Home() {
             </Stack>
           </Stack>
         </Paper>
+
+        {/* Standings */}
+        <Standings />
       </Box>
     </AppShell>
   );

@@ -6,7 +6,6 @@ import { Check, Lock, Stars, Group } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import NFLScores from './NFLScores';
-import Standings from './Standings';
 import Reactions from '@/components/Reactions';
 import WeekPicker from '@/components/WeekPicker';
 
@@ -697,12 +696,9 @@ export default function DesktopLayout({ children }: Props) {
         )}
       </Box>
 
-      {/* Center - Main Content: Children first, then Standings */}
+      {/* Center - Main Content */}
       <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
         {children}
-        <Box sx={{ mt: 3 }}>
-          <Standings />
-        </Box>
       </Box>
 
       {/* Right Column - NFL Scores */}
@@ -712,3 +708,7 @@ export default function DesktopLayout({ children }: Props) {
     </Box>
   );
 }
+      {/* Center - Main Content */}
+      <Box sx={{ flexGrow: 1, overflow: 'auto', p: 3 }}>
+        {children}
+      </Box>
