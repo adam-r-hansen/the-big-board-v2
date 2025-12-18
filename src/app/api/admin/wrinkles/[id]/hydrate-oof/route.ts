@@ -87,14 +87,10 @@ export async function POST(
     const rows = games.map(g => ({
       wrinkle_id: wrinkleId,
       game_id: g.id,
-      game_utc: g.game_utc,
-      home_team: g.home_team,
-      away_team: g.away_team,
-      spread: null,
     }))
 
     const { data: upserted, error: uErr } = await sb
-      .from('wrinkle_games')
+      .from('wrinkle_games_v2')
       .upsert(rows, { onConflict: 'wrinkle_id,game_id' })
       .select('id')
 
