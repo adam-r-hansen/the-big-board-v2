@@ -1,6 +1,6 @@
 // app/api/admin/wrinkles/[id]/hydrate-oof/route.ts
 import { NextRequest } from 'next/server'
-import { createAdminClient } from '@/lib/supabase'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 export const revalidate = 0
