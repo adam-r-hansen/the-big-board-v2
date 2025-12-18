@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       id,
       team_id,
       points,
+      multiplier,
       game:games!inner(
         id,
         status,
@@ -47,7 +48,8 @@ export async function POST(request: NextRequest) {
     if (teamScore === null || oppScore === null) continue;
 
     const won = teamScore > oppScore;
-    const points = won ? teamScore : 0;
+    const multiplier = pick.multiplier || 1;
+    const points = won ? (teamScore * multiplier) : 0;
 
     // Update the pick
     const { error: updateError } = await supabase
