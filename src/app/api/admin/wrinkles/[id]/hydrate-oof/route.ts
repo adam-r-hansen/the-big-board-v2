@@ -42,26 +42,72 @@ export async function POST(
       return json({ error: 'Could not determine season/week from wrinkle' }, 400)
     }
 
-    // Step 1: Get all teams with their current records
+    // Get all teams
     const { data: teams, error: teamsErr } = await sb
       .from('teams')
-      .select('id, abbreviation, wins, losses, ties')
+      .select('id, abbreviation')
 
     if (teamsErr) return json({ error: teamsErr.message }, 500)
 
-    // Step 2: Calculate OOF teams (win % < .400)
-    const oofTeams: string[] = []
+    // Get all FINAL games for this season before the wrinkle week
+    const { data: completedGames, error: gamesErr } = await sb
+      .from('games')
+      .select('id, home_team, away_team, home_score, away_score, status')
+      .eq('season', season)
+      .eq('status', 'FINAL')
+      .lt('week', week)
+
+    if (gamesErr) return json({ error: gamesErr.message }, 500)
+
+    // Calculate each team's record
+    const teamRecords = new Map<string, { wins: number; losses: number; ties: number }>();
+    
     for (const team of teams || []) {
-      const wins = team.wins || 0
-      const losses = team.losses || 0
-      const ties = team.ties || 0
-      const totalGames = wins + losses + ties
+      teamRecords.set(team.id, { wins: 0, losses: 0, ties: 0 });
+    }
+
+    for (const game of completedGames || []) {
+      const homeScore = game.home_score || 0;
+      const awayScore = game.away_score || 0;
       
-      if (totalGames === 0) continue // Skip teams with no games
+      const homeRecord = teamRecords.get(game.home_team);
+      const awayRecord = teamRecords.get(game.away_team);
       
-      const winPct = wins / totalGames
+      if (!homeRecord || !awayRecord) continue;
+
+      if (homeScore > awayScore) {
+        homeRecord.wins++;
+        awayRecord.losses++;
+      } else if (awayScore > homeScore) {
+        awayRecord.wins++;
+        homeRecord.losses++;
+      } else {
+        homeRecord.ties++;
+        awayRecord.ties++;
+      }
+    }
+
+    // Find OOF teams (win % < .400)
+    const oofTeams: string[] = [];
+    const oofTeamDetails: any[] = [];
+
+    for (const team of teams || []) {
+      const record = teamRecords.get(team.id);
+      if (!record) continue;
+
+      const totalGames = record.wins + record.losses + record.ties;
+      if (totalGames === 0) continue;
+
+      const winPct = record.wins / totalGames;
+      
       if (winPct < 0.400) {
-        oofTeams.push(team.id)
+        oofTeams.push(team.id);
+        oofTeamDetails.push({
+          id: team.id,
+          abbreviation: team.abbreviation,
+          record: `${record.wins}-${record.losses}${record.ties ? `-${record.ties}` : ''}`,
+          winPct: winPct.toFixed(3)
+        });
       }
     }
 
@@ -69,21 +115,21 @@ export async function POST(
       return json({ error: 'No OOF teams found (win % < .400)' }, 400)
     }
 
-    // Step 3: Find all Week games where OOF teams are playing
-    const { data: games, error: gamesErr } = await sb
+    // Find all Week games where OOF teams are playing
+    const { data: games, error: weekGamesErr } = await sb
       .from('games')
       .select('id, game_utc, home_team, away_team')
       .eq('season', season)
       .eq('week', week)
       .or(`home_team.in.(${oofTeams.join(',')}),away_team.in.(${oofTeams.join(',')})`)
 
-    if (gamesErr) return json({ error: gamesErr.message }, 500)
+    if (weekGamesErr) return json({ error: weekGamesErr.message }, 500)
 
     if (!games || games.length === 0) {
       return json({ error: 'No games found for OOF teams in this week' }, 400)
     }
 
-    // Step 4: Hydrate wrinkle with all OOF games
+    // Hydrate wrinkle with all OOF games
     const rows = games.map(g => ({
       wrinkle_id: wrinkleId,
       game_id: g.id,
@@ -97,16 +143,6 @@ export async function POST(
     if (uErr) {
       return json({ error: uErr.message, hint: 'upsert failed' }, 500)
     }
-
-    // Get team details for response
-    const oofTeamDetails = (teams || [])
-      .filter(t => oofTeams.includes(t.id))
-      .map(t => ({
-        id: t.id,
-        abbreviation: t.abbreviation,
-        record: `${t.wins}-${t.losses}${t.ties ? `-${t.ties}` : ''}`,
-        winPct: ((t.wins || 0) / ((t.wins || 0) + (t.losses || 0) + (t.ties || 0))).toFixed(3)
-      }))
 
     return json({
       ok: true,
