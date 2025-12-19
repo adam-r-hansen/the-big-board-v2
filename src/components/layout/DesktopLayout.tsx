@@ -68,6 +68,7 @@ type WrinklePick = {
     display_name: string;
     profile_color: string;
   };
+  oofGameTime?: string;
 };
 
 interface Props {
@@ -635,10 +636,8 @@ export default function DesktopLayout({ children }: Props) {
               {wrinklePicks.filter(pick => {
                 // Check if wrinkle pick is locked
                 if (pick.wrinkle.kind === 'bonus_game_oof') {
-                  // For OOF wrinkles, we need to check if the user's picked team's game has started
-                  // This requires checking games where team_id plays in this week
-                  // For now, hide OOF picks until ANY game in the week has locked
-                  return anyGamesLocked;
+                  // For OOF wrinkles, check if the user's picked team's game has started
+                  return pick.oofGameTime ? new Date(pick.oofGameTime) < new Date() : false;
                 }
                 // For single-game wrinkles, check if game has started
                 const game = pick.wrinkle.game;
@@ -648,7 +647,7 @@ export default function DesktopLayout({ children }: Props) {
                 <Stack spacing={1} sx={{ mt: 1 }}>
                   {wrinklePicks.filter(pick => {
                     if (pick.wrinkle.kind === 'bonus_game_oof') {
-                      return anyGamesLocked;
+                      return pick.oofGameTime ? new Date(pick.oofGameTime) < new Date() : false;
                     }
                     const game = pick.wrinkle.game;
                     if (!game) return false;
