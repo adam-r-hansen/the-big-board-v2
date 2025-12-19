@@ -220,8 +220,44 @@ export default function DesktopLayout({ children }: Props) {
 
     if (allLeagueWrinklePicks) {
       const wPicks = allLeagueWrinklePicks as unknown as WrinklePick[];
-      // Wrinkles are always locked once created
-      setLeagueWrinklePicks(wPicks);
+      
+      // For OOF wrinkles in league picks, check if each user's game has started
+      const oofPicks = wPicks.filter(p => p.wrinkle?.kind === 'bonus_game_oof');
+      const oofTeamIds = [...new Set(oofPicks.map(p => p.team_id))];
+      
+      let oofGameTimes = new Map<string, string>();
+      if (oofTeamIds.length > 0) {
+        const { data: oofGames } = await supabase
+          .from('games')
+          .select('id, home_team, away_team, game_utc')
+          .eq('season', 2025)
+          .eq('week', weekToLoad)
+          .or(`home_team.in.(${oofTeamIds.join(',')}),away_team.in.(${oofTeamIds.join(',')})`);
+        
+        if (oofGames) {
+          oofGames.forEach(game => {
+            if (oofTeamIds.includes(game.home_team)) {
+              oofGameTimes.set(game.home_team, game.game_utc);
+            }
+            if (oofTeamIds.includes(game.away_team)) {
+              oofGameTimes.set(game.away_team, game.game_utc);
+            }
+          });
+        }
+      }
+      
+      // Filter to only show locked wrinkle picks
+      const lockedWrinklePicks = wPicks.filter(p => {
+        if (p.wrinkle?.kind === 'bonus_game_oof') {
+          // Check if this specific team's game has started
+          const gameTime = oofGameTimes.get(p.team_id);
+          return gameTime ? new Date(gameTime) < now : false;
+        }
+        // For regular wrinkles, show immediately
+        return true;
+      });
+      
+      setLeagueWrinklePicks(lockedWrinklePicks);
     } else {
       setLeagueWrinklePicks([]);
     }
