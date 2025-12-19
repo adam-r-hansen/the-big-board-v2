@@ -266,7 +266,7 @@ export default function Standings() {
                   sx={{
                     width: 40,
                     height: 40,
-                    bgcolor: isCurrentUser ? 'rgba(255,255,255,0.2)' : standing.profile_color,
+                    bgcolor: standing.profile_color,
                     fontSize: 16,
                     fontWeight: 700,
                   }}
