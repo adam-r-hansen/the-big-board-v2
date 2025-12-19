@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Box, Paper, Typography, Stack, CircularProgress, Avatar, Chip, LinearProgress } from '@mui/material';
+import { Box, Paper, Typography, Stack, CircularProgress, Avatar, Chip, LinearProgress, IconButton, Collapse } from '@mui/material';
 import { EmojiEvents, ExpandMore } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 
@@ -254,141 +254,142 @@ export default function Standings() {
             >
               <Box sx={{ p: 2 }}>
                 <Stack direction="row" alignItems="center" gap={2}>
-                {/* Rank */}
-                <Box sx={{ width: 32, textAlign: 'center' }}>
-                  {rank === 1 ? (
-                    <EmojiEvents sx={{ color: isCurrentUser ? 'white' : 'warning.main' }} />
-                  ) : rank === 2 ? (
-                    <Typography variant="h6" fontWeight={700} sx={{ color: isCurrentUser ? 'white' : 'grey.400' }}>
-                      2
-                    </Typography>
-                  ) : rank === 3 ? (
-                    <Typography variant="h6" fontWeight={700} sx={{ color: isCurrentUser ? 'white' : '#cd7f32' }}>
-                      3
-                    </Typography>
-                  ) : (
-                    <Typography variant="h6" fontWeight={700} color={isCurrentUser ? 'inherit' : 'text.secondary'}>
-                      {rank}
-                    </Typography>
-                  )}
-                </Box>
+                  {/* Rank */}
+                  <Box sx={{ width: 32, textAlign: 'center' }}>
+                    {rank === 1 ? (
+                      <EmojiEvents sx={{ color: isCurrentUser ? 'white' : 'warning.main' }} />
+                    ) : rank === 2 ? (
+                      <Typography variant="h6" fontWeight={700} sx={{ color: isCurrentUser ? 'white' : 'grey.400' }}>
+                        2
+                      </Typography>
+                    ) : rank === 3 ? (
+                      <Typography variant="h6" fontWeight={700} sx={{ color: isCurrentUser ? 'white' : '#cd7f32' }}>
+                        3
+                      </Typography>
+                    ) : (
+                      <Typography variant="h6" fontWeight={700} color={isCurrentUser ? 'inherit' : 'text.secondary'}>
+                        {rank}
+                      </Typography>
+                    )}
+                  </Box>
 
-                {/* Avatar */}
-                <Avatar
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    bgcolor: standing.profile_color,
-                    fontSize: 16,
-                    fontWeight: 700,
-                  }}
-                >
-                  {standing.display_name.charAt(0).toUpperCase()}
-                </Avatar>
+                  {/* Avatar */}
+                  <Avatar
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      bgcolor: standing.profile_color,
+                      fontSize: 16,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {standing.display_name.charAt(0).toUpperCase()}
+                  </Avatar>
 
-                {/* Name & Stats */}
-                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                  <Typography variant="body1" fontWeight={600} noWrap>
-                    {standing.display_name}
-                    {isCurrentUser && ' (You)'}
-                  </Typography>
-                  <Stack direction="row" gap={2} sx={{ mt: 0.5 }}>
+                  {/* Name & Stats */}
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="body1" fontWeight={600} noWrap>
+                      {standing.display_name}
+                      {isCurrentUser && ' (You)'}
+                    </Typography>
+                    <Stack direction="row" gap={2} sx={{ mt: 0.5 }}>
+                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        {standing.correct_picks}-{standing.total_picks - standing.correct_picks} record
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        {32 - standing.teams_used} teams left
+                      </Typography>
+                    </Stack>
+                    {/* Progress bar */}
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={progressPercent} 
+                      sx={{ 
+                        mt: 1, 
+                        height: 4, 
+                        borderRadius: 2,
+                        bgcolor: isCurrentUser ? 'rgba(255,255,255,0.2)' : 'grey.200',
+                        '& .MuiLinearProgress-bar': {
+                          bgcolor: isCurrentUser ? 'white' : 'primary.main',
+                        }
+                      }} 
+                    />
+                  </Box>
+
+                  {/* Points */}
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="h5" fontWeight={700}>
+                      {standing.total_points}
+                    </Typography>
                     <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                      {standing.correct_picks}-{standing.total_picks - standing.correct_picks} record
+                      {standing.week_points > 0 ? `+${standing.week_points} this week` : 'pts'}
                     </Typography>
-                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                      {32 - standing.teams_used} teams left
-                    </Typography>
-                  </Stack>
-                  {/* Progress bar */}
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={progressPercent} 
-                    sx={{ 
-                      mt: 1, 
-                      height: 4, 
-                      borderRadius: 2,
-                      bgcolor: isCurrentUser ? 'rgba(255,255,255,0.2)' : 'grey.200',
-                      '& .MuiLinearProgress-bar': {
-                        bgcolor: isCurrentUser ? 'white' : 'primary.main',
-                      }
-                    }} 
-                  />
-                </Box>
+                  </Box>
 
-                {/* Points */}
-                <Box sx={{ textAlign: 'right' }}>
-                  <Typography variant="h5" fontWeight={700}>
-                    {standing.total_points}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                    {standing.week_points > 0 ? `+${standing.week_points} this week` : 'pts'}
-                  </Typography>
-                </Box>
+                  {/* Expand/Collapse Icon */}
+                  <IconButton
+                    size="small"
+                    sx={{
+                      color: isCurrentUser ? 'white' : 'text.secondary',
+                      transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedId(isExpanded ? null : standing.profile_id);
+                    }}
+                  >
+                    <ExpandMore />
+                  </IconButton>
+                </Stack>
 
-                {/* Expand/Collapse Icon */}
-                <IconButton
-                  size="small"
-                  sx={{
-                    color: isCurrentUser ? 'white' : 'text.secondary',
-                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                    transition: 'transform 0.2s',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedId(isExpanded ? null : standing.profile_id);
-                  }}
-                >
-                  <ExpandMore />
-                </IconButton>
-              </Stack>
-
-              {/* Expandable Stats */}
-              <Collapse in={isExpanded}>
-                <Box sx={{ 
-                  mt: 2, 
-                  pt: 2, 
-                  borderTop: 1, 
-                  borderColor: isCurrentUser ? 'rgba(255,255,255,0.2)' : 'divider' 
-                }}>
-                  <Stack spacing={1}>
-                    <Stack direction="row" justifyContent="space-between">
-                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                        Pick accuracy:
-                      </Typography>
-                      <Typography variant="caption" fontWeight={600}>
-                        {standing.correct_picks}/{standing.total_picks} ({winPct}%)
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" justifyContent="space-between">
-                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                        Avg per pick:
-                      </Typography>
-                      <Typography variant="caption" fontWeight={600}>
-                        {avgPerPick} pts
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" justifyContent="space-between">
-                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                        Teams remaining:
-                      </Typography>
-                      <Typography variant="caption" fontWeight={600}>
-                        {32 - standing.teams_used} of 32
-                      </Typography>
-                    </Stack>
-                    {rank > 1 && (
+                {/* Expandable Stats */}
+                <Collapse in={isExpanded}>
+                  <Box sx={{ 
+                    mt: 2, 
+                    pt: 2, 
+                    borderTop: 1, 
+                    borderColor: isCurrentUser ? 'rgba(255,255,255,0.2)' : 'divider' 
+                  }}>
+                    <Stack spacing={1}>
                       <Stack direction="row" justifyContent="space-between">
                         <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                          Points behind leader:
+                          Pick accuracy:
                         </Typography>
                         <Typography variant="caption" fontWeight={600}>
-                          {maxPoints - standing.total_points} pts
+                          {standing.correct_picks}/{standing.total_picks} ({winPct}%)
                         </Typography>
                       </Stack>
-                    )}
-                  </Stack>
-                </Box>
-              </Collapse>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                          Avg per pick:
+                        </Typography>
+                        <Typography variant="caption" fontWeight={600}>
+                          {avgPerPick} pts
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                          Teams remaining:
+                        </Typography>
+                        <Typography variant="caption" fontWeight={600}>
+                          {32 - standing.teams_used} of 32
+                        </Typography>
+                      </Stack>
+                      {rank > 1 && (
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                            Points behind leader:
+                          </Typography>
+                          <Typography variant="caption" fontWeight={600}>
+                            {maxPoints - standing.total_points} pts
+                          </Typography>
+                        </Stack>
+                      )}
+                    </Stack>
+                  </Box>
+                </Collapse>
+              </Box>
             </Box>
           );
         })}
