@@ -243,7 +243,16 @@ export default function MobileLayout({ children }: Props) {
 
     if (allLeagueWrinklePicks) {
       const wPicks = allLeagueWrinklePicks as unknown as WrinklePick[];
-      setLeagueWrinklePicks(wPicks);
+      
+      // Filter to only locked wrinkle picks
+      const lockedWrinklePicks = wPicks.filter(p => {
+        // For now, only show wrinkles with completed games
+        const game = p.wrinkle?.game;
+        if (!game) return false;
+        return game.status === 'FINAL';
+      });
+      
+      setLeagueWrinklePicks(lockedWrinklePicks);
     } else {
       setLeagueWrinklePicks([]);
     }

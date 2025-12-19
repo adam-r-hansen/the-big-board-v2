@@ -669,26 +669,9 @@ export default function DesktopLayout({ children }: Props) {
                 </Stack>
               )}
 
-              {wrinklePicks.filter(pick => {
-                // Check if wrinkle pick is locked
-                if (pick.wrinkle.kind === 'bonus_game_oof') {
-                  // For OOF wrinkles, check if the user's picked team's game has started
-                  return pick.oofGameTime ? new Date(pick.oofGameTime) < new Date() : false;
-                }
-                // For single-game wrinkles, check if game has started
-                const game = pick.wrinkle.game;
-                if (!game) return false;
-                return game.status === 'FINAL' || new Date(game.game_utc) < new Date();
-              }).length > 0 && (
+              {wrinklePicks.length > 0 && (
                 <Stack spacing={1} sx={{ mt: 1 }}>
-                  {wrinklePicks.filter(pick => {
-                    if (pick.wrinkle.kind === 'bonus_game_oof') {
-                      return pick.oofGameTime ? new Date(pick.oofGameTime) < new Date() : false;
-                    }
-                    const game = pick.wrinkle.game;
-                    if (!game) return false;
-                    return game.status === 'FINAL' || new Date(game.game_utc) < new Date();
-                  }).map((pick) => (
+                  {wrinklePicks.map((pick) => (
                     <WrinklePickCard key={pick.id} pick={pick} />
                   ))}
                 </Stack>
