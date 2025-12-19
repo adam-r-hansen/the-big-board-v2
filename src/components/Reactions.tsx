@@ -1,57 +1,102 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Box, IconButton, Typography, Popover } from '@mui/material';
-import { AddReaction } from '@mui/icons-material';
+import { Box, IconButton, Popover, Stack, Chip, Typography } from '@mui/material';
+import { Add } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
+
+const EMOJIS = [
+  // Classic reactions
+  '👍', '👎', '❤️', '🔥', '💯', '✨', '⭐', '💪', '🙌', '👏',
+  
+  // Happy faces
+  '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃',
+  '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙',
+  
+  // Thinking/Neutral
+  '🤔', '🤨', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮',
+  '🤐', '😯', '😪', '😫', '🥱', '😴', '😌', '😛', '😜', '😝',
+  
+  // Sad/Worried
+  '😒', '😓', '😔', '😕', '🙁', '☹️', '😖', '😞', '😟', '😤',
+  '😢', '😭', '😦', '😧', '😨', '😰', '😱', '🥶', '🥵', '😡',
+  
+  // Silly/Crazy
+  '🤪', '😵', '🥴', '😲', '🤯', '🤠', '🥳', '🥸', '😎', '🤓',
+  '🧐', '😈', '👿', '👹', '👺', '💀', '☠️', '👻', '👽', '🤖',
+  
+  // Animals
+  '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+  '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐔', '🐧',
+  '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄',
+  '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🦂',
+  '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀',
+  '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆',
+  
+  // Food & Drink
+  '🍎', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🍈', '🍒', '🍑',
+  '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒',
+  '🌶️', '🌽', '🥕', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞',
+  '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩',
+  '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🥪', '🥙', '🧆',
+  '🌮', '🌯', '🥗', '🥘', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱',
+  '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢',
+  '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭',
+  '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼',
+  '☕', '🍵', '🧃', '🥤', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃',
+  '🍸', '🍹', '🧉', '🍾', '🧊',
+  
+  // Sports
+  '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱',
+  '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🪁',
+  '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️',
+  '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '🤺', '⛹️',
+  '🤾', '🏌️', '🏇', '🧘', '🏄', '🏊', '🤽', '🚣', '🧗', '🚴',
+  '🚵', '🤹', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️',
+  
+  // Activities & Objects
+  '🎮', '🕹️', '🎯', '🎲', '🎰', '🎳', '🎪', '🎭', '🎨', '🎬',
+  '🎤', '🎧', '🎼', '🎹', '🥁', '🎷', '🎺', '🎸', '🪕', '🎻',
+  '🎲', '♟️', '🎯', '🎱', '🔮', '🪄', '🧿', '🎊', '🎉', '🎈',
+  '🎁', '🎀', '🏆', '💎', '💰', '💵', '💴', '💶', '💷', '🪙',
+  
+  // Nature & Weather
+  '☀️', '🌤️', '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️',
+  '❄️', '☃️', '⛄', '🌬️', '💨', '🌪️', '🌫️', '🌈', '☔', '⚡',
+  '⭐', '🌟', '✨', '💫', '🌙', '☄️', '🔥', '💥', '✨', '🌊',
+  
+  // Symbols
+  '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+  '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️',
+  '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐',
+  '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑',
+  '♒', '♓', '⛎', '🔀', '🔁', '🔂', '▶️', '⏩', '⏭️', '⏯️',
+  '◀️', '⏪', '⏮️', '🔼', '⏫', '🔽', '⏬', '⏸️', '⏹️', '⏺️',
+  '⏏️', '🎦', '📶', '📳', '📴', '♀️', '♂️', '⚧️', '✖️', '➕',
+  '➖', '➗', '♾️', '‼️', '⁉️', '❓', '❔', '❕', '❗', '〰️',
+  '💯', '🔱', '⚜️', '🔰', '♻️', '✅', '☑️', '✔️', '❌', '❎',
+  '➰', '➿', '〽️', '✳️', '✴️', '❇️', '©️', '®️', '™️',
+];
 
 type Reaction = {
   id: string;
-  emoji: string;
+  pick_id: string;
   profile_id: string;
+  emoji: string;
+  created_at: string;
   profile?: {
     display_name: string;
   };
 };
 
-type ReactionsProps = {
+interface ReactionsProps {
   pickId: string;
   currentUserId: string;
-};
-
-// Comprehensive emoji grid - organized by category
-const EMOJI_GRID = [
-  // Thumbs & hands
-  '👍', '👎', '👏', '🙌', '💪', '🤝', '✌️', '🤘',
-  // Hearts & emotions
-  '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
-  // Happy faces
-  '😀', '😃', '😄', '😁', '😆', '😂', '🤣', '😊',
-  '😇', '🙂', '😉', '😌', '😍', '🥰', '😘', '😗',
-  // Thinking & neutral
-  '🤔', '🤨', '😐', '😑', '😶', '🙄', '😏', '😬',
-  // Sad & concerned
-  '😕', '😟', '🙁', '😮', '😯', '😲', '😳', '🥺',
-  '😢', '😭', '😤', '😠', '😡', '🤬', '😱', '😨',
-  // Cool & special
-  '😎', '🤓', '🧐', '🤩', '🥳', '😵', '🤯', '🤪',
-  // Other faces
-  '🤐', '🤫', '🤭', '🥱', '😴', '🤤', '😪', '😷',
-  // Creatures
-  '🤡', '👻', '💀', '☠️', '👽', '👾', '🤖', '💩',
-  // Symbols & objects
-  '🔥', '⚡', '💥', '✨', '⭐', '🌟', '💫', '💯',
-  '🎯', '🎉', '🎊', '🏆', '🥇', '🥈', '🥉', '🏅',
-  // More symbols
-  '🚀', '💰', '💸', '💵', '🎰', '🎲', '🎮', '⚽',
-  '🏈', '🏀', '⚾', '🎾', '🏐', '🏉', '🎱', '🏓',
-];
+}
 
 export default function Reactions({ pickId, currentUserId }: ReactionsProps) {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
-  const [loading, setLoading] = useState(false);
-
   const supabase = createClient();
 
   useEffect(() => {
@@ -61,11 +106,18 @@ export default function Reactions({ pickId, currentUserId }: ReactionsProps) {
   const loadReactions = async () => {
     const { data } = await supabase
       .from('reactions_v2')
-      .select('id, emoji, profile_id, profile:profiles(display_name)')
+      .select(`
+        id,
+        pick_id,
+        profile_id,
+        emoji,
+        created_at,
+        profile:profiles(display_name)
+      `)
       .eq('pick_id', pickId);
 
     if (data) {
-      setReactions(data as unknown as Reaction[]);
+      setReactions(data as Reaction[]);
     }
   };
 
@@ -77,141 +129,109 @@ export default function Reactions({ pickId, currentUserId }: ReactionsProps) {
     setAnchorEl(null);
   };
 
-  const addReaction = async (emoji: string) => {
-    setLoading(true);
-    handleClose(); // Close immediately for snappy feel
-    
-    const res = await fetch('/api/reactions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pick_id: pickId, emoji }),
-    });
+  const handleEmojiSelect = async (emoji: string) => {
+    // Check if user already reacted with this emoji
+    const existingReaction = reactions.find(
+      r => r.profile_id === currentUserId && r.emoji === emoji
+    );
 
-    if (res.ok) {
-      await loadReactions();
+    if (existingReaction) {
+      // Remove reaction
+      await supabase
+        .from('reactions_v2')
+        .delete()
+        .eq('id', existingReaction.id);
+    } else {
+      // Add reaction
+      await supabase
+        .from('reactions_v2')
+        .insert({
+          pick_id: pickId,
+          profile_id: currentUserId,
+          emoji,
+        });
     }
-    setLoading(false);
-  };
 
-  const removeReaction = async () => {
-    setLoading(true);
-    const res = await fetch(`/api/reactions?pick_id=${pickId}`, {
-      method: 'DELETE',
-    });
-
-    if (res.ok) {
-      await loadReactions();
-    }
-    setLoading(false);
+    loadReactions();
+    handleClose();
   };
 
   // Group reactions by emoji
-  const groupedReactions = reactions.reduce((acc, r) => {
-    if (!acc[r.emoji]) acc[r.emoji] = [];
-    acc[r.emoji].push(r);
+  const groupedReactions = reactions.reduce((acc, reaction) => {
+    if (!acc[reaction.emoji]) {
+      acc[reaction.emoji] = [];
+    }
+    acc[reaction.emoji].push(reaction);
     return acc;
   }, {} as Record<string, Reaction[]>);
 
-  const userReaction = reactions.find(r => r.profile_id === currentUserId);
   const open = Boolean(anchorEl);
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-      {/* Display existing reactions */}
+      {/* Existing reactions */}
       {Object.entries(groupedReactions).map(([emoji, emojiReactions]) => {
-        const isUserReaction = emojiReactions.some(r => r.profile_id === currentUserId);
+        const userReacted = emojiReactions.some(r => r.profile_id === currentUserId);
+        
         return (
-          <Box
+          <Chip
             key={emoji}
-            onClick={() => isUserReaction ? removeReaction() : addReaction(emoji)}
+            label={`${emoji} ${emojiReactions.length}`}
+            size="small"
+            onClick={() => handleEmojiSelect(emoji)}
             sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-              bgcolor: isUserReaction ? 'primary.main' : 'background.paper',
-              color: isUserReaction ? 'white' : 'text.primary',
-              border: 1,
-              borderColor: isUserReaction ? 'primary.main' : 'divider',
               cursor: 'pointer',
-              transition: 'all 0.2s',
+              bgcolor: userReacted ? 'primary.main' : 'action.hover',
+              color: userReacted ? 'white' : 'inherit',
               '&:hover': {
-                bgcolor: isUserReaction ? 'primary.dark' : 'action.hover',
-                transform: 'scale(1.05)',
-              },
-              '&:active': {
-                transform: 'scale(0.95)',
+                bgcolor: userReacted ? 'primary.dark' : 'action.selected',
               },
             }}
-          >
-            <Typography variant="caption" sx={{ fontSize: 16 }}>{emoji}</Typography>
-            <Typography variant="caption" fontWeight={600}>{emojiReactions.length}</Typography>
-          </Box>
+          />
         );
       })}
 
       {/* Add reaction button */}
-      {!userReaction && (
-        <IconButton size="small" onClick={handleClick} disabled={loading}>
-          <AddReaction fontSize="small" />
-        </IconButton>
-      )}
+      <IconButton
+        size="small"
+        onClick={handleClick}
+        sx={{ 
+          width: 24, 
+          height: 24,
+          opacity: 0.7,
+          '&:hover': { opacity: 1 }
+        }}
+      >
+        <Add fontSize="small" />
+      </IconButton>
 
-      {/* Emoji picker popover */}
+      {/* Emoji picker */}
       <Popover
         open={open}
         anchorEl={anchorEl}
         onClose={handleClose}
         anchorOrigin={{
+          vertical: 'top',
+          horizontal: 'left',
+        }}
+        transformOrigin={{
           vertical: 'bottom',
           horizontal: 'left',
         }}
-        slotProps={{
-          paper: {
-            sx: {
-              maxHeight: 400,
-              overflow: 'auto',
-            }
-          }
-        }}
       >
-        <Box sx={{ p: 2, width: 320 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-            Tap an emoji to react
-          </Typography>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(8, 1fr)',
-              gap: 0.5,
-            }}
-          >
-            {EMOJI_GRID.map((emoji, idx) => (
-              <Box
-                key={`${emoji}-${idx}`}
-                onClick={() => addReaction(emoji)}
-                sx={{
-                  fontSize: 28,
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  p: 0.5,
-                  borderRadius: 1,
-                  transition: 'all 0.15s',
-                  '&:hover': {
-                    bgcolor: 'action.hover',
-                    transform: 'scale(1.2)',
-                  },
-                  '&:active': {
-                    transform: 'scale(1.0)',
-                  },
-                }}
+        <Box sx={{ p: 1, maxWidth: 320, maxHeight: 400, overflow: 'auto' }}>
+          <Stack direction="row" flexWrap="wrap" gap={0.5}>
+            {EMOJIS.map((emoji) => (
+              <IconButton
+                key={emoji}
+                size="small"
+                onClick={() => handleEmojiSelect(emoji)}
+                sx={{ fontSize: 20 }}
               >
                 {emoji}
-              </Box>
+              </IconButton>
             ))}
-          </Box>
+          </Stack>
         </Box>
       </Popover>
     </Box>
