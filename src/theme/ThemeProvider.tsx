@@ -31,16 +31,6 @@ interface Props {
   children: ReactNode;
 }
 
-type TeamRow = {
-  color_primary: string | null;
-  color_secondary: string | null;
-};
-
-type ProfileRow = {
-  use_team_theme: boolean | null;
-  favorite_team: TeamRow[] | null;
-};
-
 export default function ThemeProvider({ children }: Props) {
   const [mode, setMode] = useState<ThemeMode>('auto');
   const [resolvedMode, setResolvedMode] = useState<'light' | 'dark'>('light');
@@ -63,27 +53,24 @@ export default function ThemeProvider({ children }: Props) {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select(
-          `
-          use_team_theme,
-          favorite_team:teams(color_primary, color_secondary)
-        `
-        )
+        .select('use_team_theme, favorite_team_id, teams!favorite_team_id(color_primary, color_secondary)')
         .eq('id', user.id)
-        .single<ProfileRow>();
+        .single();
 
-      const team = profile?.favorite_team?.[0];
+      const team = profile?.teams;
 
       if (
         profile?.use_team_theme &&
         team?.color_primary &&
         team?.color_secondary
       ) {
+        console.log('Setting team colors:', { primary: team.color_primary, secondary: team.color_secondary });
         setTeamColors({
           primary: team.color_primary,
           secondary: team.color_secondary,
         });
       } else {
+        console.log('Clearing team colors');
         setTeamColors(null);
       }
     } catch (error) {
