@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { ThemeProvider as MUIThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { createLightTheme, createDarkTheme, TeamColors } from './theme';
@@ -153,8 +153,10 @@ export default function ThemeProvider({ children }: Props) {
   };
 
   // Create theme with team colors
-  const theme =
-    resolvedMode === 'dark' ? createDarkTheme(teamColors) : createLightTheme(teamColors);
+  const theme = useMemo(
+    () => (resolvedMode === 'dark' ? createDarkTheme(teamColors) : createLightTheme(teamColors)),
+    [resolvedMode, teamColors]
+  );
 
   return (
     <ThemeContext.Provider
