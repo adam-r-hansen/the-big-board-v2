@@ -63,14 +63,15 @@ export default function AdminPage() {
         return;
       }
 
-      // Check if user has admin role in any league
-      const { data: memberships } = await supabase
-        .from('league_memberships_v2')
-        .select('role')
-        .eq('profile_id', user.id)
-        .eq('role', 'admin');
+      // Get user's profile to check display name
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('id', user.id)
+        .single();
 
-      if (!memberships || memberships.length === 0) {
+      // Only Adam can access admin
+      if (profile?.display_name !== 'Adam!') {
         router.push('/');
         return;
       }
