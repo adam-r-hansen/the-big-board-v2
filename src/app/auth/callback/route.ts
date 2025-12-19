@@ -11,12 +11,12 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     
     if (!error) {
-      // Handle the next parameter properly
       const redirectUrl = next.startsWith('/') ? `${origin}${next}` : next;
       return NextResponse.redirect(redirectUrl);
     }
+    
+    console.error('Auth error:', error);
   }
 
-  // Redirect to login with error
   return NextResponse.redirect(`${origin}/auth/login?error=auth_failed`);
 }
