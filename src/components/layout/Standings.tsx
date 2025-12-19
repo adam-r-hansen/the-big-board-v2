@@ -234,6 +234,15 @@ export default function Standings() {
           const avgPerPick = standing.total_picks > 0 ? (standing.total_points / standing.total_picks).toFixed(1) : '0.0';
           const winPct = standing.total_picks > 0 ? ((standing.correct_picks / standing.total_picks) * 100).toFixed(1) : '0.0';
 
+          // Get current user's stats for comparison
+          const currentUserStanding = standings.find(s => s.profile_id === currentUserId);
+          const currentUserAvgPerPick = currentUserStanding && currentUserStanding.total_picks > 0 
+            ? (currentUserStanding.total_points / currentUserStanding.total_picks).toFixed(1) 
+            : '0.0';
+          const currentUserWinPct = currentUserStanding && currentUserStanding.total_picks > 0 
+            ? ((currentUserStanding.correct_picks / currentUserStanding.total_picks) * 100).toFixed(1) 
+            : '0.0';
+
           return (
             <Box
               key={standing.profile_id}
@@ -352,22 +361,53 @@ export default function Standings() {
                     borderColor: isCurrentUser ? 'rgba(255,255,255,0.2)' : 'divider' 
                   }}>
                     <Stack spacing={1}>
-                      <Stack direction="row" justifyContent="space-between">
+                      {/* Pick accuracy */}
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
                         <Typography variant="caption" sx={{ opacity: 0.7 }}>
                           Pick accuracy:
                         </Typography>
-                        <Typography variant="caption" fontWeight={600}>
-                          {standing.correct_picks}/{standing.total_picks} ({winPct}%)
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="caption" fontWeight={600}>
+                            {standing.correct_picks}/{standing.total_picks} ({winPct}%)
+                          </Typography>
+                          {!isCurrentUser && currentUserStanding && (
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                color: parseFloat(winPct) > parseFloat(currentUserWinPct) ? 'success.main' : 'error.main',
+                                fontWeight: 600
+                              }}
+                            >
+                              ({parseFloat(winPct) > parseFloat(currentUserWinPct) ? '+' : ''}{(parseFloat(winPct) - parseFloat(currentUserWinPct)).toFixed(1)}%)
+                            </Typography>
+                          )}
+                        </Box>
                       </Stack>
-                      <Stack direction="row" justifyContent="space-between">
+
+                      {/* Avg per pick */}
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
                         <Typography variant="caption" sx={{ opacity: 0.7 }}>
                           Avg per pick:
                         </Typography>
-                        <Typography variant="caption" fontWeight={600}>
-                          {avgPerPick} pts
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="caption" fontWeight={600}>
+                            {avgPerPick} pts
+                          </Typography>
+                          {!isCurrentUser && currentUserStanding && (
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                color: parseFloat(avgPerPick) > parseFloat(currentUserAvgPerPick) ? 'success.main' : 'error.main',
+                                fontWeight: 600
+                              }}
+                            >
+                              ({parseFloat(avgPerPick) > parseFloat(currentUserAvgPerPick) ? '+' : ''}{(parseFloat(avgPerPick) - parseFloat(currentUserAvgPerPick)).toFixed(1)})
+                            </Typography>
+                          )}
+                        </Box>
                       </Stack>
+
+                      {/* Teams remaining */}
                       <Stack direction="row" justifyContent="space-between">
                         <Typography variant="caption" sx={{ opacity: 0.7 }}>
                           Teams remaining:
@@ -376,6 +416,8 @@ export default function Standings() {
                           {32 - standing.teams_used} of 32
                         </Typography>
                       </Stack>
+
+                      {/* Points behind leader */}
                       {rank > 1 && (
                         <Stack direction="row" justifyContent="space-between">
                           <Typography variant="caption" sx={{ opacity: 0.7 }}>
