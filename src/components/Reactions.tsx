@@ -86,7 +86,9 @@ type Reaction = {
   created_at: string;
   profile?: {
     display_name: string;
-  };
+  } | {
+    display_name: string;
+  }[];
 };
 
 interface ReactionsProps {
@@ -117,7 +119,12 @@ export default function Reactions({ pickId, currentUserId }: ReactionsProps) {
       .eq('pick_id', pickId);
 
     if (data) {
-      setReactions(data as Reaction[]);
+      // Handle profile being returned as array from Supabase
+      const formattedData = data.map(r => ({
+        ...r,
+        profile: Array.isArray(r.profile) ? r.profile[0] : r.profile
+      }));
+      setReactions(formattedData as Reaction[]);
     }
   };
 
