@@ -55,6 +55,7 @@ type WrinklePick = {
       away_team: string;
       home_score: number | null;
       away_score: number | null;
+      game_utc: string;
     } | null;
   };
   team: {
