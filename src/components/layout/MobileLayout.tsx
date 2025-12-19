@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Box, Paper, Tabs, Tab, Typography, Stack, Chip, CircularProgress, Button, Menu, MenuItem } from '@mui/material';
 import { SportsFootball, Leaderboard, EmojiEvents, Check, Lock, Stars, ExpandMore } from '@mui/icons-material';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import NFLScores from './NFLScores';
 import Standings from './Standings';
@@ -93,6 +93,13 @@ interface Props {
 
 export default function MobileLayout({ children }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
+  
+  // For non-dashboard pages, just render children
+  const isTabRoute = pathname === '/' || pathname === '/picks' || pathname === '/playoffs';
+  if (!isTabRoute) {
+    return <Box sx={{ p: 2, overflow: 'auto', height: 'calc(100vh - 56px)' }}>{children}</Box>;
+  }
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
