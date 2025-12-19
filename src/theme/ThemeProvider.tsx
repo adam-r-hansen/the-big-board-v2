@@ -31,6 +31,11 @@ interface Props {
   children: ReactNode;
 }
 
+type TeamRow = {
+  color_primary: string | null;
+  color_secondary: string | null;
+};
+
 export default function ThemeProvider({ children }: Props) {
   const [mode, setMode] = useState<ThemeMode>('auto');
   const [resolvedMode, setResolvedMode] = useState<'light' | 'dark'>('light');
@@ -57,13 +62,13 @@ export default function ThemeProvider({ children }: Props) {
         .eq('id', user.id)
         .single();
 
-      const team = profile?.teams;
+      // Supabase relationship selects often come back as an array.
+      // Support array OR object here to keep TS + runtime happy.
+      const rawTeams = (profile as any)?.teams as TeamRow[] | TeamRow | null | undefined;
+      const team: TeamRow | null =
+        Array.isArray(rawTeams) ? rawTeams[0] ?? null : rawTeams ?? null;
 
-      if (
-        profile?.use_team_theme &&
-        team?.color_primary &&
-        team?.color_secondary
-      ) {
+      if (profile?.use_team_theme && team?.color_primary && team?.color_secondary) {
         console.log('Setting team colors:', { primary: team.color_primary, secondary: team.color_secondary });
         setTeamColors({
           primary: team.color_primary,
