@@ -103,7 +103,15 @@ export default function AppShell({
             
             const lastLeagueId = localStorage.getItem('activeLeagueSeasonId');
             const lastLeague = leagueInfos.find((l: LeagueInfo) => l.id === lastLeagueId);
-            setInternalActiveLeague(lastLeague || leagueInfos[0]);
+            const selectedLeague = lastLeague || leagueInfos[0];
+            
+            // Always ensure localStorage is set
+            if (!lastLeagueId && selectedLeague) {
+              localStorage.setItem('activeLeagueSeasonId', selectedLeague.id);
+            }
+            
+            setInternalActiveLeague(selectedLeague);
+            onLeagueChange?.(selectedLeague);
           }
         }
       }
