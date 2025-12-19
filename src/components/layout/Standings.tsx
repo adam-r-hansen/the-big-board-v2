@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Box, Paper, Typography, Stack, CircularProgress, Avatar, Chip, LinearProgress } from '@mui/material';
-import { EmojiEvents } from '@mui/icons-material';
+import { EmojiEvents, ExpandMore } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 
 type Standing = {
@@ -18,6 +18,7 @@ type Standing = {
 
 export default function Standings() {
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentWeek, setCurrentWeek] = useState(1);
@@ -229,19 +230,30 @@ export default function Standings() {
           const rank = index + 1;
           const progressPercent = (standing.total_points / maxPoints) * 100;
 
+          const isExpanded = expandedId === standing.profile_id;
+          const avgPerPick = standing.total_picks > 0 ? (standing.total_points / standing.total_picks).toFixed(1) : '0.0';
+          const winPct = standing.total_picks > 0 ? ((standing.correct_picks / standing.total_picks) * 100).toFixed(1) : '0.0';
+
           return (
             <Box
               key={standing.profile_id}
               sx={{
-                p: 2,
                 borderRadius: 2,
                 bgcolor: isCurrentUser ? 'primary.main' : 'background.default',
                 color: isCurrentUser ? 'white' : 'inherit',
                 border: 1,
                 borderColor: isCurrentUser ? 'primary.main' : 'divider',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                '&:hover': {
+                  transform: 'scale(1.01)',
+                  boxShadow: 2,
+                },
               }}
+              onClick={() => setExpandedId(isExpanded ? null : standing.profile_id)}
             >
-              <Stack direction="row" alignItems="center" gap={2}>
+              <Box sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" gap={2}>
                 {/* Rank */}
                 <Box sx={{ width: 32, textAlign: 'center' }}>
                   {rank === 1 ? (
@@ -313,7 +325,70 @@ export default function Standings() {
                     {standing.week_points > 0 ? `+${standing.week_points} this week` : 'pts'}
                   </Typography>
                 </Box>
+
+                {/* Expand/Collapse Icon */}
+                <IconButton
+                  size="small"
+                  sx={{
+                    color: isCurrentUser ? 'white' : 'text.secondary',
+                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedId(isExpanded ? null : standing.profile_id);
+                  }}
+                >
+                  <ExpandMore />
+                </IconButton>
               </Stack>
+
+              {/* Expandable Stats */}
+              <Collapse in={isExpanded}>
+                <Box sx={{ 
+                  mt: 2, 
+                  pt: 2, 
+                  borderTop: 1, 
+                  borderColor: isCurrentUser ? 'rgba(255,255,255,0.2)' : 'divider' 
+                }}>
+                  <Stack spacing={1}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        Pick accuracy:
+                      </Typography>
+                      <Typography variant="caption" fontWeight={600}>
+                        {standing.correct_picks}/{standing.total_picks} ({winPct}%)
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        Avg per pick:
+                      </Typography>
+                      <Typography variant="caption" fontWeight={600}>
+                        {avgPerPick} pts
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                        Teams remaining:
+                      </Typography>
+                      <Typography variant="caption" fontWeight={600}>
+                        {32 - standing.teams_used} of 32
+                      </Typography>
+                    </Stack>
+                    {rank > 1 && (
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                          Points behind leader:
+                        </Typography>
+                        <Typography variant="caption" fontWeight={600}>
+                          {maxPoints - standing.total_points} pts
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Stack>
+                </Box>
+              </Collapse>
             </Box>
           );
         })}
