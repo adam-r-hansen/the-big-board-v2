@@ -208,7 +208,7 @@ export default function DesktopLayout({ children }: Props) {
           kind,
           week,
           league_season_id,
-          game:games(status, home_team, away_team, home_score, away_score)
+          game:games(status, home_team, away_team, home_score, away_score, game_utc)
         ),
         team:teams(short_name, abbreviation, color_primary, logo),
         profile:profiles(display_name, profile_color)
@@ -238,7 +238,7 @@ export default function DesktopLayout({ children }: Props) {
           kind,
           week,
           league_season_id,
-          game:games(status, home_team, away_team, home_score, away_score)
+          game:games(status, home_team, away_team, home_score, away_score, game_utc)
         ),
         team:teams(short_name, abbreviation, color_primary, logo)
       `)
@@ -631,9 +631,28 @@ export default function DesktopLayout({ children }: Props) {
                 </Stack>
               )}
 
-              {wrinklePicks.length > 0 && (
+              {wrinklePicks.filter(pick => {
+                // Check if wrinkle pick is locked
+                if (pick.wrinkle.kind === 'bonus_game_oof') {
+                  // For OOF wrinkles, we need to check if the user's picked team's game has started
+                  // This requires checking games where team_id plays in this week
+                  // For now, hide OOF picks until ANY game in the week has locked
+                  return anyGamesLocked;
+                }
+                // For single-game wrinkles, check if game has started
+                const game = pick.wrinkle.game;
+                if (!game) return false;
+                return game.status === 'FINAL' || new Date(game.game_utc) < new Date();
+              }).length > 0 && (
                 <Stack spacing={1} sx={{ mt: 1 }}>
-                  {wrinklePicks.map((pick) => (
+                  {wrinklePicks.filter(pick => {
+                    if (pick.wrinkle.kind === 'bonus_game_oof') {
+                      return anyGamesLocked;
+                    }
+                    const game = pick.wrinkle.game;
+                    if (!game) return false;
+                    return game.status === 'FINAL' || new Date(game.game_utc) < new Date();
+                  }).map((pick) => (
                     <WrinklePickCard key={pick.id} pick={pick} />
                   ))}
                 </Stack>
