@@ -24,7 +24,7 @@ import {
   CardActions,
   Grid,
 } from '@mui/material';
-import { Add, Stars, Group, Settings, EmojiEvents } from '@mui/icons-material';
+import { Add, Stars, Group, Settings, EmojiEvents, CalendarMonth, Scoreboard, Calculate } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import { createClient } from '@/lib/supabase/client';
 
@@ -33,6 +33,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   // Create league form
   const [leagueName, setLeagueName] = useState('');
@@ -50,6 +52,35 @@ export default function AdminPage() {
   const [autoAssignLoading, setAutoAssignLoading] = useState(false);
 
   const supabase = createClient();
+
+  // Check if user is admin
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        router.push('/');
+        return;
+      }
+
+      // Check if user has admin role in any league
+      const { data: memberships } = await supabase
+        .from('league_memberships_v2')
+        .select('role')
+        .eq('profile_id', user.id)
+        .eq('role', 'admin');
+
+      if (!memberships || memberships.length === 0) {
+        router.push('/');
+        return;
+      }
+
+      setIsAdmin(true);
+      setCheckingAuth(false);
+    };
+
+    checkAdmin();
+  }, [router, supabase]);
 
   // Generate random code
   const generateCode = () => {
@@ -70,6 +101,8 @@ export default function AdminPage() {
 
   // Load existing leagues
   useEffect(() => {
+    if (!isAdmin) return;
+
     const loadLeagues = async () => {
       const { data } = await supabase
         .from('league_seasons_v2')
@@ -93,7 +126,7 @@ export default function AdminPage() {
     };
 
     loadLeagues();
-  }, [supabase]);
+  }, [supabase, isAdmin]);
 
   const handleCreateLeague = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,7 +221,7 @@ export default function AdminPage() {
     setAutoAssignLoading(false);
   };
 
-  if (!mounted) {
+  if (checkingAuth || !mounted) {
     return (
       <AppShell>
         <Container maxWidth="md" sx={{ py: 4, textAlign: 'center' }}>
@@ -196,6 +229,10 @@ export default function AdminPage() {
         </Container>
       </AppShell>
     );
+  }
+
+  if (!isAdmin) {
+    return null;
   }
 
   return (
@@ -242,6 +279,57 @@ export default function AdminPage() {
               <CardActions>
                 <Button size="small" onClick={() => router.push('/admin/playoffs')}>
                   Manage Playoffs
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Card>
+              <CardContent>
+                <CalendarMonth color="info" sx={{ fontSize: 40, mb: 1 }} />
+                <Typography variant="h6">Schedule</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Sync NFL game schedule
+                </Typography>
+              </CardContent>
+              <CardActions>
+                <Button size="small" onClick={() => router.push('/admin/schedule')}>
+                  Schedule Sync
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Card>
+              <CardContent>
+                <Scoreboard color="success" sx={{ fontSize: 40, mb: 1 }} />
+                <Typography variant="h6">Scores</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Update game scores
+                </Typography>
+              </CardContent>
+              <CardActions>
+                <Button size="small" onClick={() => router.push('/admin/update-games')}>
+                  Update Scores
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Card>
+              <CardContent>
+                <Calculate color="primary" sx={{ fontSize: 40, mb: 1 }} />
+                <Typography variant="h6">Scoring</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Run scoring engine
+                </Typography>
+              </CardContent>
+              <CardActions>
+                <Button size="small" onClick={() => router.push('/admin/scoring')}>
+                  Run Scoring
                 </Button>
               </CardActions>
             </Card>
