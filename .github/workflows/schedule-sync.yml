@@ -24,7 +24,7 @@ jobs:
         run: |
           echo "Syncing schedule for week ${{ steps.week.outputs.current_week }}..."
           CODE=$(curl -L -sS -o schedule.json -w "%{http_code}" -X POST \
-            "https://$VERCEL_URL/api/admin/schedule" \
+            "https://$VERCEL_URL/api/admin/schedule/espn" \
             -H "Content-Type: application/json" \
             -d "{\"weeks\":\"${{ steps.week.outputs.current_week }}\"}")
           
@@ -46,7 +46,7 @@ jobs:
           NEXT_WEEK=$(({{ steps.week.outputs.current_week }} + 1))
           echo "Syncing schedule for week $NEXT_WEEK..."
           CODE=$(curl -L -sS -o schedule_next.json -w "%{http_code}" -X POST \
-            "https://$VERCEL_URL/api/admin/schedule" \
+            "https://$VERCEL_URL/api/admin/schedule/espn" \
             -H "Content-Type: application/json" \
             -d "{\"weeks\":\"$NEXT_WEEK\"}")
           
