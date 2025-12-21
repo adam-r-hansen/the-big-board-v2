@@ -18,6 +18,7 @@ type Pick = {
   multiplier: number;
   locked_at: string | null;
   profile_id: string;
+  auto_assigned?: boolean;
   team: {
     short_name: string;
     abbreviation: string;
@@ -162,6 +163,7 @@ export default function MobileLayout({ children }: Props) {
         multiplier,
         locked_at,
         profile_id,
+        auto_assigned,
         team:teams(short_name, abbreviation, color_primary, logo),
         game:games(status, home_team, away_team, home_score, away_score, game_utc),
         profile:profiles(display_name, profile_color)
@@ -196,6 +198,7 @@ export default function MobileLayout({ children }: Props) {
         multiplier,
         locked_at,
         profile_id,
+        auto_assigned,
         team:teams(short_name, abbreviation, color_primary, logo),
         game:games(status, home_team, away_team, home_score, away_score, game_utc),
         profile:profiles(display_name, profile_color)

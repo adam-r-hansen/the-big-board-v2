@@ -18,6 +18,7 @@ type Pick = {
   multiplier: number;
   locked_at: string | null;
   profile_id: string;
+  auto_assigned?: boolean;
   team: {
     short_name: string;
     abbreviation: string;
@@ -138,6 +139,7 @@ export default function DesktopLayout({ children }: Props) {
         multiplier,
         locked_at,
         profile_id,
+        auto_assigned,
         team:teams(short_name, abbreviation, color_primary, logo),
         game:games(status, home_team, away_team, home_score, away_score, game_utc),
         profile:profiles(display_name, profile_color)
@@ -172,6 +174,7 @@ export default function DesktopLayout({ children }: Props) {
         multiplier,
         locked_at,
         profile_id,
+        auto_assigned,
         team:teams(short_name, abbreviation, color_primary, logo),
         game:games(status, home_team, away_team, home_score, away_score, game_utc),
         profile:profiles(display_name, profile_color)
@@ -369,6 +372,29 @@ export default function DesktopLayout({ children }: Props) {
             }}
           >
             x{multiplier}
+          </Box>
+        )}
+
+        {/* Auto-Assigned Badge */}
+        {pick.auto_assigned && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: -8,
+              left: -8,
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 1,
+              bgcolor: 'warning.main',
+              color: 'white',
+              fontSize: 10,
+              fontWeight: 700,
+              border: '2px solid',
+              borderColor: 'background.paper',
+              zIndex: 1,
+            }}
+          >
+            AUTO
           </Box>
         )}
         
