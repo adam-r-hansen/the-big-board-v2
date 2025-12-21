@@ -21,8 +21,7 @@ jobs:
           echo "Fetching NFL scores..."
           for i in 1 2 3; do
             CODE=$(curl -sS -o scores.json -w "%{http_code}" -X POST \
-              "https://$VERCEL_URL/api/admin/update-games" \
-              -H "Content-Type: application/json")
+              "https://$VERCEL_URL/api/admin/update-games")
             
             echo "Scores API returned HTTP $CODE"
             cat scores.json 2>/dev/null || echo "No response body"
@@ -40,8 +39,7 @@ jobs:
           echo "Running scoring engine..."
           for i in 1 2 3; do
             CODE=$(curl -sS -o scoring.json -w "%{http_code}" -X POST \
-              "https://$VERCEL_URL/api/scoring" \
-              -H "Content-Type: application/json")
+              "https://$VERCEL_URL/api/scoring")
             
             echo "Scoring API returned HTTP $CODE"
             cat scoring.json 2>/dev/null || echo "No response body"
