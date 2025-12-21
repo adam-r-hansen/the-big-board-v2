@@ -1,0 +1,58 @@
+name: Verify & Sync NFL Schedule
+on:
+  schedule:
+    # Run every Wednesday at 4am EST (9am UTC)
+    - cron: '0 9 * * 3'
+  workflow_dispatch:
+
+jobs:
+  sync-schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Get Current Week
+        id: week
+        run: |
+          # Get current NFL week from ESPN API
+          CURRENT_WEEK=$(curl -sS "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -r '.week.number')
+          echo "current_week=$CURRENT_WEEK" >> $GITHUB_OUTPUT
+          echo "Current NFL week: $CURRENT_WEEK"
+
+      - name: Sync Current Week Schedule
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+        run: |
+          echo "Syncing schedule for week ${{ steps.week.outputs.current_week }}..."
+          CODE=$(curl -L -sS -o schedule.json -w "%{http_code}" -X POST \
+            "https://$VERCEL_URL/api/admin/schedule-sync" \
+            -H "Content-Type: application/json" \
+            -d "{\"weeks\":\"${{ steps.week.outputs.current_week }}\"}")
+          
+          echo "Schedule sync returned HTTP $CODE"
+          cat schedule.json 2>/dev/null || echo "No response"
+          
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+            echo "✅ Schedule sync completed successfully"
+            exit 0
+          else
+            echo "❌ Schedule sync failed"
+            exit 1
+          fi
+
+      - name: Sync Next Week Schedule
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+        run: |
+          NEXT_WEEK=$(({{ steps.week.outputs.current_week }} + 1))
+          echo "Syncing schedule for week $NEXT_WEEK..."
+          CODE=$(curl -L -sS -o schedule_next.json -w "%{http_code}" -X POST \
+            "https://$VERCEL_URL/api/admin/schedule-sync" \
+            -H "Content-Type: application/json" \
+            -d "{\"weeks\":\"$NEXT_WEEK\"}")
+          
+          echo "Next week schedule sync returned HTTP $CODE"
+          cat schedule_next.json 2>/dev/null || echo "No response"
+          
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+            echo "✅ Next week schedule synced"
+          fi
