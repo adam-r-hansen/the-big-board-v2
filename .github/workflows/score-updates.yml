@@ -1,0 +1,57 @@
+name: NFL Scores & Scoring Engine
+on:
+  schedule:
+    # Run every 5 minutes during NFL game days (Thu-Mon)
+    - cron: '*/5 * * * 4'      # Thursday
+    - cron: '*/5 * * * 0'      # Sunday  
+    - cron: '*/5 * * * 1'      # Monday
+    # Run every 30 minutes other days (just to catch stragglers)
+    - cron: '*/30 * * * 2,3,5,6'  # Tue, Wed, Fri, Sat
+  workflow_dispatch:
+
+jobs:
+  update-scores:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Fetch NFL Scores from ESPN
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+        run: |
+          echo "Fetching NFL scores..."
+          for i in 1 2 3; do
+            CODE=$(curl -sS -o scores.json -w "%{http_code}" -X POST \
+              "https://$VERCEL_URL/api/admin/update-games" \
+              -H "Content-Type: application/json")
+            
+            echo "Scores API returned HTTP $CODE"
+            cat scores.json 2>/dev/null || echo "No response body"
+            
+            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+              break
+            fi
+            sleep 5
+          done
+
+      - name: Run Scoring Engine
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+        run: |
+          echo "Running scoring engine..."
+          for i in 1 2 3; do
+            CODE=$(curl -sS -o scoring.json -w "%{http_code}" -X POST \
+              "https://$VERCEL_URL/api/scoring" \
+              -H "Content-Type: application/json")
+            
+            echo "Scoring API returned HTTP $CODE"
+            cat scoring.json 2>/dev/null || echo "No response body"
+            
+            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+              echo "✅ Scores updated and picks scored successfully"
+              exit 0
+            fi
+            sleep 5
+          done
+          
+          echo "❌ Scoring failed after retries"
+          exit 1
