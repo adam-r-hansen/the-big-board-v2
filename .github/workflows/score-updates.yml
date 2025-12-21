@@ -19,37 +19,32 @@ jobs:
           VERCEL_URL: ${{ secrets.VERCEL_URL }}
         run: |
           echo "Fetching NFL scores..."
-          for i in 1 2 3; do
-            CODE=$(curl -sS -o scores.json -w "%{http_code}" -X POST \
-              "https://$VERCEL_URL/api/admin/update-games")
-            
-            echo "Scores API returned HTTP $CODE"
-            cat scores.json 2>/dev/null || echo "No response body"
-            
-            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
-              break
-            fi
-            sleep 5
-          done
+          CODE=$(curl -L -sS -o scores.json -w "%{http_code}" -X POST \
+            "https://$VERCEL_URL/api/admin/update-games")
+          
+          echo "Scores API returned HTTP $CODE"
+          cat scores.json 2>/dev/null || echo "No response body"
+          
+          if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
+            echo "❌ Failed to fetch scores"
+            exit 1
+          fi
 
       - name: Run Scoring Engine
         env:
           VERCEL_URL: ${{ secrets.VERCEL_URL }}
         run: |
           echo "Running scoring engine..."
-          for i in 1 2 3; do
-            CODE=$(curl -sS -o scoring.json -w "%{http_code}" -X POST \
-              "https://$VERCEL_URL/api/scoring")
-            
-            echo "Scoring API returned HTTP $CODE"
-            cat scoring.json 2>/dev/null || echo "No response body"
-            
-            if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
-              echo "✅ Scores updated and picks scored successfully"
-              exit 0
-            fi
-            sleep 5
-          done
+          CODE=$(curl -L -sS -o scoring.json -w "%{http_code}" -X POST \
+            "https://$VERCEL_URL/api/scoring")
           
-          echo "❌ Scoring failed after retries"
-          exit 1
+          echo "Scoring API returned HTTP $CODE"
+          cat scoring.json 2>/dev/null || echo "No response body"
+          
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+            echo "✅ Scores updated and picks scored successfully"
+            exit 0
+          else
+            echo "❌ Scoring failed"
+            exit 1
+          fi
