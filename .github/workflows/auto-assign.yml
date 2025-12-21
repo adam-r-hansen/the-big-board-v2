@@ -1,0 +1,56 @@
+name: Auto-Assign Missed Picks
+on:
+  schedule:
+    # Run every Tuesday at 3am EST (8am UTC)
+    - cron: '0 8 * * 2'
+  workflow_dispatch:
+
+jobs:
+  auto-assign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Calculate Previous Week
+        id: week
+        run: |
+          # Get current NFL week from ESPN API
+          CURRENT_WEEK=$(curl -sS "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -r '.week.number')
+          PREV_WEEK=$((CURRENT_WEEK - 1))
+          
+          echo "current_week=$CURRENT_WEEK" >> $GITHUB_OUTPUT
+          echo "prev_week=$PREV_WEEK" >> $GITHUB_OUTPUT
+          echo "Previous week to auto-assign: $PREV_WEEK"
+
+      - name: Auto-Assign Main League
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          MAIN_LEAGUE_ID: ${{ secrets.MAIN_LEAGUE_SEASON_ID }}
+        run: |
+          echo "Auto-assigning main league for week ${{ steps.week.outputs.prev_week }}..."
+          CODE=$(curl -L -sS -o main.json -w "%{http_code}" -X POST \
+            "https://$VERCEL_URL/api/auto-assign" \
+            -H "Content-Type: application/json" \
+            -d "{\"leagueSeasonId\":\"$MAIN_LEAGUE_ID\",\"week\":${{ steps.week.outputs.prev_week }}}")
+          
+          echo "Main League returned HTTP $CODE"
+          cat main.json 2>/dev/null || echo "No response"
+
+      - name: Auto-Assign Open Division
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          OPEN_LEAGUE_ID: ${{ secrets.OPEN_LEAGUE_SEASON_ID }}
+        run: |
+          echo "Auto-assigning Open Division for week ${{ steps.week.outputs.prev_week }}..."
+          CODE=$(curl -L -sS -o open.json -w "%{http_code}" -X POST \
+            "https://$VERCEL_URL/api/auto-assign" \
+            -H "Content-Type: application/json" \
+            -d "{\"leagueSeasonId\":\"$OPEN_LEAGUE_ID\",\"week\":${{ steps.week.outputs.prev_week }}}")
+          
+          echo "Open Division returned HTTP $CODE"
+          cat open.json 2>/dev/null || echo "No response"
+          
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+            echo "✅ Auto-assign completed successfully"
+          else
+            echo "⚠️ Auto-assign had issues but continuing"
+          fi
