@@ -15,6 +15,6 @@ jobs:
           curl -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.PLAYOFF_TRANSITION_SECRET }}" \
-            "${{ secrets.NEXT_PUBLIC_APP_URL }}/api/playoffs/transition"
+            "https://${{ secrets.VERCEL_URL }}/api/playoffs/transition"
         env:
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
