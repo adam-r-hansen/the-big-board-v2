@@ -249,9 +249,10 @@ export default function MobileLayout({ children }: Props) {
       
       // Filter to only locked wrinkle picks
       const lockedWrinklePicks = wPicks.filter(p => {
-        // OOF wrinkles don't have a game - show them if they have points
+        // OOF wrinkles: we need to check if the specific team's game has started
         if (p.wrinkle.kind === 'bonus_game_oof') {
-          return p.points > 0;
+          // For OOF, always show in league picks (game times checked elsewhere)
+          return true;
         }
         // Other wrinkles: only show with completed games
         const game = p.wrinkle?.game;
