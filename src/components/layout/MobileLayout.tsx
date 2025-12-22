@@ -249,7 +249,11 @@ export default function MobileLayout({ children }: Props) {
       
       // Filter to only locked wrinkle picks
       const lockedWrinklePicks = wPicks.filter(p => {
-        // For now, only show wrinkles with completed games
+        // OOF wrinkles don't have a game - show them if they have points
+        if (p.wrinkle.kind === 'bonus_game_oof') {
+          return p.points > 0;
+        }
+        // Other wrinkles: only show with completed games
         const game = p.wrinkle?.game;
         if (!game) return false;
         return game.status === 'FINAL';
