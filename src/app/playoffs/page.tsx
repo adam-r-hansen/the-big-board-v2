@@ -9,16 +9,16 @@ import {
   CircularProgress, 
   Alert,
   Paper,
+  Grid,
   Chip,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import Grid from '@mui/material/Grid2';
 import { EmojiEvents, Lock } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
 import { createClient } from '@/lib/supabase/client';
-import { generateUnlockSchedule, isDraftComplete, isPickUnlocked, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
+import { generateUnlockSchedule, isDraftComplete, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
 
 type Team = {
   id: string;
@@ -50,7 +50,7 @@ type PlayoffPick = {
   team_id: string;
   pick_position: number;
   team?: Team;
-  game?: Game;
+  game?: Team;
 };
 
 type Participant = {
@@ -275,76 +275,76 @@ export default function PlayoffsPage() {
           <Typography variant="h6" gutterBottom>
             Playoff Teams
           </Typography>
-          <Grid container spacing={2}>
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
             {allParticipants.filter(p => p.seed <= 4).map((p) => (
-              <Grid size={{ xs: 12, sm: 6, md: 3 }} key={p.id}>
-                <Paper
-                  elevation={participant?.id === p.id ? 3 : 1}
-                  sx={{
-                    p: 2,
-                    border: 2,
-                    borderColor: participant?.id === p.id ? 'primary.main' : 'divider',
-                  }}
-                >
-                  <Typography variant="subtitle2" fontWeight={700}>
-                    #{p.seed} {p.profile?.display_name || p.profile?.email}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {allPicks.filter(pick => pick.profile_id === p.profile_id).length}/{p.picks_available} picks
-                  </Typography>
-                  <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
-                    {[1, 2, 3, 4].map((pos) => {
-                      const hasPick = allPicks.some(
-                        pick => pick.profile_id === p.profile_id && pick.pick_position === pos
-                      );
-                      return (
-                        <Box
-                          key={pos}
-                          sx={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: '50%',
-                            bgcolor: hasPick ? 'success.main' : 'grey.300',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {!hasPick && <Lock sx={{ fontSize: 14, color: 'grey.600' }} />}
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                </Paper>
-              </Grid>
+              <Paper
+                key={p.id}
+                elevation={participant?.id === p.id ? 3 : 1}
+                sx={{
+                  p: 2,
+                  border: 2,
+                  borderColor: participant?.id === p.id ? 'primary.main' : 'divider',
+                  minWidth: 200,
+                  mb: 2,
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={700}>
+                  #{p.seed} {p.profile?.display_name || p.profile?.email}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {allPicks.filter(pick => pick.profile_id === p.profile_id).length}/{p.picks_available} picks
+                </Typography>
+                <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+                  {[1, 2, 3, 4].map((pos) => {
+                    const hasPick = allPicks.some(
+                      pick => pick.profile_id === p.profile_id && pick.pick_position === pos
+                    );
+                    return (
+                      <Box
+                        key={pos}
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          bgcolor: hasPick ? 'success.main' : 'grey.300',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {!hasPick && <Lock sx={{ fontSize: 14, color: 'grey.600' }} />}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </Paper>
             ))}
-          </Grid>
+          </Stack>
         </Paper>
 
         {/* Games */}
         <Typography variant="h6" gutterBottom>
           Week {round.week} Games
         </Typography>
-        <Grid container spacing={2}>
+        <Stack spacing={2}>
           {games.map((game) => {
             const myPick = getMyPickForGame(game.id);
             const isTaken = takenGameIds.has(game.id);
             const gameStarted = new Date(game.game_utc) <= now;
             
             return (
-              <Grid size={{ xs: 12, md: 6, lg: 4 }} key={game.id}>
-                <PlayoffGameCard
-                  game={game}
-                  selectedTeamId={myPick?.team_id}
-                  onSelectTeam={handlePick}
-                  disabled={saving || !isPlayoffParticipant}
-                  isLocked={gameStarted}
-                  isTaken={isTaken}
-                />
-              </Grid>
+              <PlayoffGameCard
+                key={game.id}
+                game={game}
+                selectedTeamId={myPick?.team_id}
+                onSelectTeam={handlePick}
+                disabled={saving || !isPlayoffParticipant}
+                isLocked={gameStarted}
+                isTaken={isTaken}
+              />
             );
           })}
-        </Grid>
+        </Stack>
       </Container>
     </AppShell>
   );
