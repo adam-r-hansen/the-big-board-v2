@@ -32,6 +32,7 @@ type LeagueInfo = {
   id: string;
   league_id: string;
   season: number;
+  playoffs_enabled?: boolean;
   leagues_v2: {
     id: string;
     name: string;
@@ -62,7 +63,6 @@ export default function AppShell({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [leagueAnchorEl, setLeagueAnchorEl] = useState<null | HTMLElement>(null);
   const [userEmail, setUserEmail] = useState('');
-  const [playoffsEnabled, setPlayoffsEnabled] = useState(false);
 
   // Internal state for leagues if not provided via props
   const [internalLeagues, setInternalLeagues] = useState<LeagueInfo[]>([]);
@@ -74,6 +74,9 @@ export default function AppShell({
   const leagues = propsLeagues || internalLeagues;
   const activeLeague = propsActiveLeague !== undefined ? propsActiveLeague : internalActiveLeague;
   const email = propsUserEmail || userEmail;
+
+  // Get playoffs enabled directly from activeLeague
+  const playoffsEnabled = activeLeague?.playoffs_enabled || false;
 
   // Cycle theme function
   const cycleTheme = () => {
@@ -90,7 +93,7 @@ export default function AppShell({
       if (user) {
         setUserEmail(user.email || '');
 
-        // Load leagues
+        // Load leagues with playoffs_enabled flag
         const { data: participants } = await supabase
           .from('league_season_participants_v2')
           .select(`
@@ -98,6 +101,7 @@ export default function AppShell({
               id,
               league_id,
               season,
+              playoffs_enabled,
               leagues_v2 (
                 id,
                 name
@@ -125,26 +129,6 @@ export default function AppShell({
 
     loadData();
   }, [supabase, propsLeagues, propsActiveLeague]);
-
-  // Check if playoffs are enabled - runs whenever activeLeague changes
-  useEffect(() => {
-    const checkPlayoffs = async () => {
-      if (!activeLeague?.id) {
-        setPlayoffsEnabled(false);
-        return;
-      }
-
-      const { data: settings } = await supabase
-        .from('playoff_settings_v2')
-        .select('playoffs_enabled')
-        .eq('league_season_id', activeLeague.id)
-        .single();
-
-      setPlayoffsEnabled(settings?.playoffs_enabled || false);
-    };
-
-    checkPlayoffs();
-  }, [activeLeague?.id, supabase]);
 
   useEffect(() => {
     if (propsUserEmail) return;
@@ -190,24 +174,14 @@ export default function AppShell({
     setLeagueAnchorEl(null);
   };
 
-  const handleLeagueSelect = async (league: LeagueInfo) => {
+  const handleLeagueSelect = (league: LeagueInfo) => {
     if (onLeagueChange) {
       onLeagueChange(league);
     } else {
       setInternalActiveLeague(league);
       localStorage.setItem('activeLeagueSeasonId', league.id);
-      
-      // Check playoffs for new league immediately
-      const { data: settings } = await supabase
-        .from('playoff_settings_v2')
-        .select('playoffs_enabled')
-        .eq('league_season_id', league.id)
-        .single();
-      
-      setPlayoffsEnabled(settings?.playoffs_enabled || false);
-      
-      // Navigate to home to refresh data
-      router.push('/');
+      // Refresh the page to load new league data
+      window.location.reload();
     }
     handleLeagueClose();
   };
