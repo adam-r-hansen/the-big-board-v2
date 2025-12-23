@@ -18,37 +18,16 @@ export type UnlockWindow = {
 };
 
 // Snake draft order for Week 17 semifinals (top 4 teams)
-// Seed 1 gets advantage: picks positions 1, 2, 6
-// Format: [seed, pickPosition]
 const WEEK_17_DRAFT_ORDER: [number, number][] = [
-  [1, 1], // Window 1: Seed 1 picks their 1st
-  [1, 2], // Window 2: Seed 1 picks their 2nd
-  [2, 1], // Window 3: Seed 2 picks their 1st
-  [3, 1], // Window 4: Seed 3 picks their 1st
-  [4, 1], // Window 5: Seed 4 picks their 1st
-  [1, 3], // Window 6: Seed 1 picks their 3rd
-  [2, 2], // Window 7: Seed 2 picks their 2nd
-  [3, 2], // Window 8: Seed 3 picks their 2nd
-  [4, 2], // Window 9: Seed 4 picks their 2nd
-  [2, 3], // Window 10: Seed 2 picks their 3rd
-  [3, 3], // Window 11: Seed 3 picks their 3rd
-  [4, 3], // Window 12: Seed 4 picks their 3rd
-  [1, 4], // Window 13: Seed 1 picks their 4th
-  [2, 4], // Window 14: Seed 2 picks their 4th
-  [3, 4], // Window 15: Seed 3 picks their 4th
-  [4, 4], // Window 16: Seed 4 picks their 4th
+  [1, 1], [1, 2], [2, 1], [3, 1], [4, 1], [1, 3], 
+  [2, 2], [3, 2], [4, 2], [2, 3], [3, 3], [4, 3], 
+  [1, 4], [2, 4], [3, 4], [4, 4]
 ];
 
 // Snake draft order for Week 18 championship (top 2 teams)
 const WEEK_18_DRAFT_ORDER: [number, number][] = [
-  [1, 1], // Window 1
-  [2, 1], // Window 2
-  [1, 2], // Window 3
-  [2, 2], // Window 4
-  [1, 3], // Window 5
-  [2, 3], // Window 6
-  [1, 4], // Window 7
-  [2, 4], // Window 8
+  [1, 1], [2, 1], [1, 2], [2, 2], 
+  [1, 3], [2, 3], [1, 4], [2, 4]
 ];
 
 const INTERVAL_HOURS = 3;
@@ -66,9 +45,11 @@ function addHoursWithSleep(startTime: Date, hoursToAdd: number): Date {
     result.setHours(result.getHours() + 1);
     
     // Get hour in PT (UTC-8)
-    const ptHour = (result.getUTCHours() - 8 + 24) % 24;
+    // Convert UTC to PT by subtracting 8 hours
+    const utcHour = result.getUTCHours();
+    const ptHour = (utcHour - 8 + 24) % 24;
     
-    // Skip sleep hours (8pm-9am PT)
+    // Skip sleep hours (8pm-9am PT = hours 20-23 and 0-8)
     if (ptHour >= SLEEP_START_HOUR || ptHour < SLEEP_END_HOUR) {
       // Don't count this hour, we're in sleep mode
       continue;
