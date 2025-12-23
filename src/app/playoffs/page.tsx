@@ -17,7 +17,7 @@ import { EmojiEvents, Lock, Timer, CheckCircle } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
 import { createClient } from '@/lib/supabase/client';
-import { generateUnlockSchedule, isDraftComplete, isPickUnlocked, getNextUnlockForSeed, getTimeUntilUnlock, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
+import { generateUnlockSchedule, isDraftComplete, getNextUnlockForSeed, getTimeUntilUnlock, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
 
 type Team = {
   id: string;
@@ -232,7 +232,13 @@ export default function PlayoffsPage() {
 
   const draftComplete = schedule.length > 0 && isDraftComplete(schedule, now);
   const isPlayoffParticipant = participant && participant.seed <= 4;
-  const takenGameIds = new Set(allPicks.filter(p => p.profile_id !== participant?.profile_id).map(p => p.game_id));
+  
+  // Track taken TEAMS (not games!) - multiple people can pick from same game
+  const takenTeamIds = new Set(
+    allPicks
+      .filter(p => p.profile_id !== participant?.profile_id)
+      .map(p => p.team_id)
+  );
 
   const getMyPickForGame = (gameId: string) => {
     return myPicks.find(p => p.game_id === gameId);
@@ -373,7 +379,6 @@ export default function PlayoffsPage() {
         <Stack spacing={2}>
           {games.map((game) => {
             const myPick = getMyPickForGame(game.id);
-            const isTaken = takenGameIds.has(game.id);
             const gameStarted = new Date(game.game_utc) <= now;
             
             return (
@@ -384,7 +389,7 @@ export default function PlayoffsPage() {
                 onSelectTeam={handlePick}
                 disabled={saving || !isPlayoffParticipant}
                 isLocked={gameStarted}
-                isTaken={isTaken}
+                takenTeamIds={takenTeamIds}
               />
             );
           })}

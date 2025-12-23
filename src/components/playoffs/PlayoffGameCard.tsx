@@ -31,7 +31,8 @@ interface Props {
   onSelectTeam: (gameId: string, teamId: string) => void;
   disabled?: boolean;
   isLocked?: boolean;
-  isTaken?: boolean;
+  isTaken?: boolean; // Not used anymore, but keeping for compatibility
+  takenTeamIds?: Set<string>; // NEW: Set of specific team IDs that are taken
 }
 
 // Helper to determine if a color is light or dark
@@ -50,7 +51,7 @@ export default function PlayoffGameCard({
   onSelectTeam,
   disabled = false,
   isLocked = false,
-  isTaken = false,
+  takenTeamIds = new Set(),
 }: Props) {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -75,8 +76,9 @@ export default function PlayoffGameCard({
 
   const TeamRow = ({ team, isHome }: { team: Team; isHome: boolean }) => {
     const isSelected = selectedTeamId === team.id;
+    const isTeamTaken = takenTeamIds.has(team.id); // Check if THIS specific team is taken
     const score = isHome ? game.home_score : game.away_score;
-    const canSelect = !isLocked && !gameStarted && !disabled && !isTaken;
+    const canSelect = !isLocked && !gameStarted && !disabled && !isTeamTaken;
 
     // Determine background color
     const getBgColor = () => {
@@ -89,6 +91,7 @@ export default function PlayoffGameCard({
       if (isSelected) {
         return isLightColor(team.color_primary) ? '#000000' : '#ffffff';
       }
+      if (isTeamTaken) return 'text.disabled';
       return 'text.primary';
     };
 
@@ -104,7 +107,7 @@ export default function PlayoffGameCard({
           alignItems: 'center',
           gap: 1.5,
           cursor: canSelect ? 'pointer' : 'default',
-          opacity: (selectedTeamId && !isSelected) ? 0.5 : 1,
+          opacity: isTeamTaken ? 0.45 : (selectedTeamId && !isSelected) ? 0.5 : 1,
           bgcolor: bgColor,
           transition: 'all 0.2s ease',
           '&:hover': canSelect ? {
@@ -121,7 +124,7 @@ export default function PlayoffGameCard({
               borderRadius: '50%',
               bgcolor: 'white',
               border: 2,
-              borderColor: team.color_primary,
+              borderColor: isTeamTaken ? 'grey.500' : team.color_primary,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -137,6 +140,7 @@ export default function PlayoffGameCard({
                 width: 30,
                 height: 30,
                 objectFit: 'contain',
+                filter: isTeamTaken ? 'grayscale(100%)' : 'none',
               }}
             />
           </Box>
@@ -174,6 +178,11 @@ export default function PlayoffGameCard({
           >
             {team.short_name}
           </Typography>
+          {isTeamTaken && (
+            <Typography variant="caption" color="text.disabled">
+              Already picked
+            </Typography>
+          )}
         </Box>
 
         {/* Score (if game started) */}
@@ -242,12 +251,6 @@ export default function PlayoffGameCard({
             </>
           )}
         </Typography>
-        
-        {isTaken && !selectedTeamId && (
-          <Typography variant="caption" color="warning.main" fontWeight={600}>
-            TAKEN
-          </Typography>
-        )}
       </Box>
 
       {/* Team Rows */}
