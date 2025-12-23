@@ -9,11 +9,11 @@ import {
   CircularProgress, 
   Alert,
   Paper,
-  Grid,
   Chip,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import { EmojiEvents, Lock } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
@@ -277,7 +277,7 @@ export default function PlayoffsPage() {
           </Typography>
           <Grid container spacing={2}>
             {allParticipants.filter(p => p.seed <= 4).map((p) => (
-              <Grid item xs={12} sm={6} md={3} key={p.id}>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }} key={p.id}>
                 <Paper
                   elevation={participant?.id === p.id ? 3 : 1}
                   sx={{
@@ -332,7 +332,7 @@ export default function PlayoffsPage() {
             const gameStarted = new Date(game.game_utc) <= now;
             
             return (
-              <Grid item xs={12} md={6} lg={4} key={game.id}>
+              <Grid size={{ xs: 12, md: 6, lg: 4 }} key={game.id}>
                 <PlayoffGameCard
                   game={game}
                   selectedTeamId={myPick?.team_id}
