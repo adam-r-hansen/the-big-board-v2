@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase';
 
 // POST /api/playoffs/initialize - Initialize a playoff round
 export async function POST(request: NextRequest) {
@@ -8,6 +9,17 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Verify user is Adam (admin check)
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.display_name !== 'Adam!') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const body = await request.json();
@@ -21,8 +33,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'week must be 17 or 18' }, { status: 400 });
   }
 
+  // Use admin client for database operations that bypass RLS
+  const adminClient = createAdminClient();
+
   // Check if round already exists
-  const { data: existingRound } = await supabase
+  const { data: existingRound } = await adminClient
     .from('playoff_rounds_v2')
     .select('id')
     .eq('league_season_id', leagueSeasonId)
@@ -34,7 +49,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Get standings from regular season (weeks 1-16) or Week 17
-  const { data: standings, error: standingsError } = await supabase
+  const { data: standings, error: standingsError } = await adminClient
     .from('picks_v2')
     .select('profile_id, points')
     .eq('league_season_id', leagueSeasonId);
@@ -64,40 +79,34 @@ export async function POST(request: NextRequest) {
 
   if (week === 17) {
     // Week 17: Semifinals (top 4) + Non-playoff (5th+)
-    return await initializeWeek17(supabase, leagueSeasonId, rankedPlayers, draftStartTime);
+    return await initializeWeek17(adminClient, leagueSeasonId, rankedPlayers, draftStartTime);
   } else {
     // Week 18: Need Week 17 results
-    return await initializeWeek18(supabase, leagueSeasonId, draftStartTime);
+    return await initializeWeek18(adminClient, leagueSeasonId, draftStartTime);
   }
 }
 
 function calculateDraftStartTime(week: number): Date {
   // Find the Tuesday of the playoff week at 9am EST
   const now = new Date();
-  const year = now.getFullYear();
-  
-  // NFL Week 17 is typically late December
-  // For 2025 season: Week 17 starts around Dec 28
-  // This is a simplified calculation - in production, derive from game schedule
   
   // For now, return next Tuesday at 9am EST (14:00 UTC)
   const tuesday = new Date();
-  tuesday.setDate(tuesday.getDate() + ((2 - tuesday.getDay() + 7) % 7 || 7));
-  tuesday.setUTCHours(14, 0, 0, 0); // 9am EST = 14:00 UTC
+  const daysUntilTuesday = (2 - tuesday.getDay() + 7) % 7 || 7;
+  tuesday.setDate(tuesday.getDate() + daysUntilTuesday);
+  tuesday.setHours(14, 0, 0, 0); // 9am EST = 14:00 UTC
   
   return tuesday;
 }
 
 async function initializeWeek17(
-  supabase: any, 
-  leagueSeasonId: string, 
-  rankedPlayers: { profileId: string; points: number; seed: number }[],
+  supabase: any,
+  leagueSeasonId: string,
+  rankedPlayers: Array<{ profileId: string; points: number; seed: number }>,
   draftStartTime: Date
 ) {
-  const results: any = { rounds: [], participants: [] };
-
-  // Create Semifinal round (top 4)
-  const { data: semifinalRound, error: sfError } = await supabase
+  // Create Semifinal round
+  const { data: semifinalRound, error: semifinalError } = await supabase
     .from('playoff_rounds_v2')
     .insert({
       league_season_id: leagueSeasonId,
@@ -109,13 +118,12 @@ async function initializeWeek17(
     .select()
     .single();
 
-  if (sfError) {
-    return NextResponse.json({ error: sfError.message }, { status: 500 });
+  if (semifinalError) {
+    return NextResponse.json({ error: semifinalError.message }, { status: 500 });
   }
-  results.rounds.push(semifinalRound);
 
-  // Create Non-playoff round (5th+)
-  const { data: nonPlayoffRound, error: npError } = await supabase
+  // Create Non-playoff round
+  const { data: nonPlayoffRound, error: nonPlayoffError } = await supabase
     .from('playoff_rounds_v2')
     .insert({
       league_season_id: leagueSeasonId,
@@ -127,103 +135,67 @@ async function initializeWeek17(
     .select()
     .single();
 
-  if (npError) {
-    return NextResponse.json({ error: npError.message }, { status: 500 });
+  if (nonPlayoffError) {
+    return NextResponse.json({ error: nonPlayoffError.message }, { status: 500 });
   }
-  results.rounds.push(nonPlayoffRound);
 
   // Add participants
-  for (const player of rankedPlayers) {
-    const isPlayoff = player.seed <= 4;
-    const roundId = isPlayoff ? semifinalRound.id : nonPlayoffRound.id;
-    
-    const { data: participant, error: pError } = await supabase
-      .from('playoff_participants_v2')
-      .insert({
-        playoff_round_id: roundId,
-        profile_id: player.profileId,
-        seed: player.seed,
-        picks_available: 4, // Everyone gets 4 picks
-      })
-      .select()
-      .single();
+  const participants = rankedPlayers.map(player => ({
+    playoff_round_id: player.seed <= 4 ? semifinalRound.id : nonPlayoffRound.id,
+    profile_id: player.profileId,
+    seed: player.seed,
+    regular_season_points: player.points,
+    picks_available: player.seed <= 4 ? 4 : 5, // Semifinal gets 4 picks, non-playoff gets 5
+  }));
 
-    if (pError) {
-      console.error('Error adding participant:', pError);
-      continue;
-    }
-    results.participants.push(participant);
+  const { error: participantsError } = await supabase
+    .from('playoff_participants_v2')
+    .insert(participants);
+
+  if (participantsError) {
+    return NextResponse.json({ error: participantsError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ 
+  return NextResponse.json({
     message: 'Week 17 initialized',
-    ...results 
+    semifinalRound,
+    nonPlayoffRound,
+    participantCount: participants.length,
   });
 }
 
 async function initializeWeek18(
-  supabase: any, 
+  supabase: any,
   leagueSeasonId: string,
   draftStartTime: Date
 ) {
-  // Get Week 17 semifinal results
-  const { data: week17Round } = await supabase
-    .from('playoff_rounds_v2')
-    .select('id')
-    .eq('league_season_id', leagueSeasonId)
-    .eq('week', 17)
-    .eq('round_type', 'semifinal')
-    .single();
-
-  if (!week17Round) {
-    return NextResponse.json({ error: 'Week 17 semifinal not found' }, { status: 400 });
-  }
-
-  // Get Week 17 participants with their points
-  const { data: week17Participants } = await supabase
+  // Get Week 17 semifinal participants with their scores
+  const { data: week17Participants, error: week17Error } = await supabase
     .from('playoff_participants_v2')
     .select(`
-      profile_id,
-      seed
+      *,
+      round:playoff_rounds_v2!inner(week, round_type)
     `)
-    .eq('playoff_round_id', week17Round.id);
+    .eq('round.league_season_id', leagueSeasonId)
+    .eq('round.week', 17)
+    .eq('round.round_type', 'semifinal')
+    .order('playoff_points', { ascending: false });
 
-  // Get Week 17 playoff picks points
-  const { data: week17Picks } = await supabase
-    .from('playoff_picks_v2')
-    .select('profile_id, points')
-    .eq('playoff_round_id', week17Round.id);
+  if (week17Error) {
+    return NextResponse.json({ error: week17Error.message }, { status: 500 });
+  }
 
-  // Calculate Week 17 totals
-  const week17Points = new Map<string, number>();
-  week17Picks?.forEach((pick: any) => {
-    const current = week17Points.get(pick.profile_id) || 0;
-    week17Points.set(pick.profile_id, current + (pick.points || 0));
-  });
+  if (!week17Participants || week17Participants.length < 2) {
+    return NextResponse.json({ error: 'Need Week 17 results' }, { status: 400 });
+  }
 
-  // Rank Week 17 playoff participants
-  const week17Ranked = week17Participants
-    ?.map((p: any) => ({
-      profileId: p.profile_id,
-      points: week17Points.get(p.profile_id) || 0,
-      regularSeasonSeed: p.seed,
-    }))
-    .sort((a: any, b: any) => b.points - a.points || a.regularSeasonSeed - b.regularSeasonSeed) || [];
+  // Top 2 from Week 17 advance to championship
+  const finalists = week17Participants
+    .slice(0, 2)
+    .map((p, idx) => ({ ...p, championshipSeed: idx + 1 }));
 
-  const results: any = { rounds: [], participants: [] };
-
-  // Get SNF game for tiebreaker
-  const { data: snfGame } = await supabase
-    .from('games')
-    .select('id')
-    .eq('season', 2025)
-    .eq('week', 18)
-    .order('game_utc', { ascending: false })
-    .limit(1)
-    .single();
-
-  // Create Championship round (top 2 from Week 17)
-  const { data: champRound, error: cError } = await supabase
+  // Create Championship round
+  const { data: championshipRound, error: championshipError } = await supabase
     .from('playoff_rounds_v2')
     .insert({
       league_season_id: leagueSeasonId,
@@ -231,103 +203,34 @@ async function initializeWeek18(
       round_type: 'championship',
       status: 'pending',
       draft_start_time: draftStartTime.toISOString(),
-      tiebreaker_game_id: snfGame?.id || null,
     })
     .select()
     .single();
 
-  if (cError) {
-    return NextResponse.json({ error: cError.message }, { status: 500 });
-  }
-  results.rounds.push(champRound);
-
-  // Create Consolation round (3rd & 4th from Week 17)
-  const { data: consolationRound, error: consError } = await supabase
-    .from('playoff_rounds_v2')
-    .insert({
-      league_season_id: leagueSeasonId,
-      week: 18,
-      round_type: 'consolation',
-      status: 'pending',
-      draft_start_time: draftStartTime.toISOString(),
-    })
-    .select()
-    .single();
-
-  if (consError) {
-    return NextResponse.json({ error: consError.message }, { status: 500 });
-  }
-  results.rounds.push(consolationRound);
-
-  // Create Non-playoff round (5th+)
-  const { data: nonPlayoffRound, error: npError } = await supabase
-    .from('playoff_rounds_v2')
-    .insert({
-      league_season_id: leagueSeasonId,
-      week: 18,
-      round_type: 'non_playoff',
-      status: 'pending',
-      draft_start_time: draftStartTime.toISOString(),
-    })
-    .select()
-    .single();
-
-  if (npError) {
-    return NextResponse.json({ error: npError.message }, { status: 500 });
-  }
-  results.rounds.push(nonPlayoffRound);
-
-  // Add championship participants (top 2)
-  for (let i = 0; i < Math.min(2, week17Ranked.length); i++) {
-    const player = week17Ranked[i];
-    await supabase
-      .from('playoff_participants_v2')
-      .insert({
-        playoff_round_id: champRound.id,
-        profile_id: player.profileId,
-        seed: i + 1,
-        picks_available: 4,
-      });
+  if (championshipError) {
+    return NextResponse.json({ error: championshipError.message }, { status: 500 });
   }
 
-  // Add consolation participants (3rd & 4th)
-  for (let i = 2; i < Math.min(4, week17Ranked.length); i++) {
-    const player = week17Ranked[i];
-    await supabase
-      .from('playoff_participants_v2')
-      .insert({
-        playoff_round_id: consolationRound.id,
-        profile_id: player.profileId,
-        seed: i + 1,
-        picks_available: 4,
-      });
+  // Add championship participants
+  const participants = finalists.map(finalist => ({
+    playoff_round_id: championshipRound.id,
+    profile_id: finalist.profile_id,
+    seed: finalist.championshipSeed,
+    regular_season_points: finalist.regular_season_points,
+    picks_available: 4, // Championship gets 4 picks
+  }));
+
+  const { error: participantsError } = await supabase
+    .from('playoff_participants_v2')
+    .insert(participants);
+
+  if (participantsError) {
+    return NextResponse.json({ error: participantsError.message }, { status: 500 });
   }
 
-  // Get all league participants for non-playoff
-  const { data: allParticipants } = await supabase
-    .from('league_season_participants_v2')
-    .select('profile_id')
-    .eq('league_season_id', leagueSeasonId)
-    .eq('active', true);
-
-  const playoffProfileIds = new Set(week17Ranked.slice(0, 4).map((p: any) => p.profileId));
-  
-  // Add non-playoff participants
-  for (const p of allParticipants || []) {
-    if (!playoffProfileIds.has(p.profile_id)) {
-      await supabase
-        .from('playoff_participants_v2')
-        .insert({
-          playoff_round_id: nonPlayoffRound.id,
-          profile_id: p.profile_id,
-          seed: null,
-          picks_available: 4,
-        });
-    }
-  }
-
-  return NextResponse.json({ 
+  return NextResponse.json({
     message: 'Week 18 initialized',
-    ...results 
+    championshipRound,
+    finalists: finalists.map(f => ({ profileId: f.profile_id, seed: f.championshipSeed })),
   });
 }
