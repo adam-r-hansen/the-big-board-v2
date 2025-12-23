@@ -6,8 +6,8 @@
  * 
  * Timing:
  * - 3-hour intervals
- * - Sleep mode: 8pm-9am (no overnight unlocks)
- * - Starts Tuesday 9am EST
+ * - Sleep mode: 8pm-9am PT (no overnight unlocks)
+ * - Starts Tuesday 9am PT
  */
 
 export type UnlockWindow = {
@@ -52,8 +52,8 @@ const WEEK_18_DRAFT_ORDER: [number, number][] = [
 ];
 
 const INTERVAL_HOURS = 3;
-const SLEEP_START_HOUR = 20; // 8pm EST
-const SLEEP_END_HOUR = 9;   // 9am EST
+const SLEEP_START_HOUR = 20; // 8pm PT
+const SLEEP_END_HOUR = 9;   // 9am PT
 
 /**
  * Calculate the next valid unlock time, respecting sleep hours
@@ -65,11 +65,11 @@ function addHoursWithSleep(startTime: Date, hoursToAdd: number): Date {
   while (remainingHours > 0) {
     result.setHours(result.getHours() + 1);
     
-    // Get hour in EST (UTC-5)
-    const estHour = (result.getUTCHours() - 5 + 24) % 24;
+    // Get hour in PT (UTC-8)
+    const ptHour = (result.getUTCHours() - 8 + 24) % 24;
     
-    // Skip sleep hours (8pm-9am EST)
-    if (estHour >= SLEEP_START_HOUR || estHour < SLEEP_END_HOUR) {
+    // Skip sleep hours (8pm-9am PT)
+    if (ptHour >= SLEEP_START_HOUR || ptHour < SLEEP_END_HOUR) {
       // Don't count this hour, we're in sleep mode
       continue;
     }
