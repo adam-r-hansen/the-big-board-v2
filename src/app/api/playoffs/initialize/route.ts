@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 // POST /api/playoffs/initialize - Initialize a playoff round
 export async function POST(request: NextRequest) {
