@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   // Calculate total points per player
   const pointsMap = new Map<string, number>();
-  standings?.forEach(pick => {
+  standings?.forEach((pick: any) => {
     const current = pointsMap.get(pick.profile_id) || 0;
     pointsMap.set(pick.profile_id, current + (pick.points || 0));
   });
@@ -192,7 +192,7 @@ async function initializeWeek18(
   // Top 2 from Week 17 advance to championship
   const finalists = week17Participants
     .slice(0, 2)
-    .map((p, idx) => ({ ...p, championshipSeed: idx + 1 }));
+    .map((p: any, idx: number) => ({ ...p, championshipSeed: idx + 1 }));
 
   // Create Championship round
   const { data: championshipRound, error: championshipError } = await supabase
@@ -212,7 +212,7 @@ async function initializeWeek18(
   }
 
   // Add championship participants
-  const participants = finalists.map(finalist => ({
+  const participants = finalists.map((finalist: any) => ({
     playoff_round_id: championshipRound.id,
     profile_id: finalist.profile_id,
     seed: finalist.championshipSeed,
@@ -231,6 +231,6 @@ async function initializeWeek18(
   return NextResponse.json({
     message: 'Week 18 initialized',
     championshipRound,
-    finalists: finalists.map(f => ({ profileId: f.profile_id, seed: f.championshipSeed })),
+    finalists: finalists.map((f: any) => ({ profileId: f.profile_id, seed: f.championshipSeed })),
   });
 }
