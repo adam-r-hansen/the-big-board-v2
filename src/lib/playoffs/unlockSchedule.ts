@@ -31,17 +31,25 @@ const WEEK_18_DRAFT_ORDER: [number, number][] = [
 ];
 
 const INTERVAL_HOURS = 3;
+const SLEEP_START_HOUR = 20; // 8pm PT
+const SLEEP_END_HOUR = 9;    // 9am PT
+
+/**
+ * Get hour in PT from a Date object
+ */
+function getPTHour(date: Date): number {
+  // PT is UTC-8
+  const utcHours = date.getUTCHours();
+  return (utcHours - 8 + 24) % 24;
+}
 
 /**
  * Check if a time is during sleep hours in PT (8pm-9am)
  */
 function isDuringSleepHours(date: Date): boolean {
-  // PT is UTC-8
-  const utcHours = date.getUTCHours();
-  const ptHours = (utcHours - 8 + 24) % 24;
-  
+  const ptHours = getPTHour(date);
   // Sleep hours: 20 (8pm) through 8 (8:59am)
-  return ptHours >= 20 || ptHours < 9;
+  return ptHours >= SLEEP_START_HOUR || ptHours < SLEEP_END_HOUR;
 }
 
 /**
@@ -49,13 +57,23 @@ function isDuringSleepHours(date: Date): boolean {
  */
 function addHoursWithSleep(startTime: Date, hoursToAdd: number): Date {
   let result = new Date(startTime);
-  
-  // Add the hours
   result.setHours(result.getHours() + hoursToAdd);
   
-  // If we land during sleep hours, jump to 9am PT the next day
-  while (isDuringSleepHours(result)) {
-    result.setHours(result.getHours() + 1);
+  // If we land during sleep hours, jump to 9am PT
+  if (isDuringSleepHours(result)) {
+    // Set to next 9am PT
+    const ptHour = getPTHour(result);
+    
+    if (ptHour >= SLEEP_START_HOUR) {
+      // We're in evening (8pm-11pm), jump to tomorrow 9am
+      const hoursUntilMidnight = 24 - ptHour;
+      const hoursAfterMidnight = SLEEP_END_HOUR;
+      result.setHours(result.getHours() + hoursUntilMidnight + hoursAfterMidnight);
+    } else {
+      // We're in early morning (12am-8am), jump to today 9am
+      const hoursUntil9am = SLEEP_END_HOUR - ptHour;
+      result.setHours(result.getHours() + hoursUntil9am);
+    }
   }
 
   return result;
