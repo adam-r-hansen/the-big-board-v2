@@ -83,7 +83,7 @@ export default function AppShell({
 
   // Load leagues and active league if not provided via props
   useEffect(() => {
-    if (propsLeagues && propsActiveLeague !== undefined) return; // Skip if provided via props
+    if (propsLeagues && propsActiveLeague !== undefined) return;
 
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -126,10 +126,13 @@ export default function AppShell({
     loadData();
   }, [supabase, propsLeagues, propsActiveLeague]);
 
-  // Check if playoffs are enabled for active league
+  // Check if playoffs are enabled - runs whenever activeLeague changes
   useEffect(() => {
     const checkPlayoffs = async () => {
-      if (!activeLeague) return;
+      if (!activeLeague?.id) {
+        setPlayoffsEnabled(false);
+        return;
+      }
 
       const { data: settings } = await supabase
         .from('playoff_settings_v2')
@@ -141,7 +144,7 @@ export default function AppShell({
     };
 
     checkPlayoffs();
-  }, [activeLeague, supabase]);
+  }, [activeLeague?.id, supabase]); // Depend on activeLeague.id so it re-checks when league changes
 
   useEffect(() => {
     if (propsUserEmail) return;
