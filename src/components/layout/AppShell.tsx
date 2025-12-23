@@ -19,12 +19,12 @@ import {
 import {
   LightMode,
   DarkMode,
-  SettingsBrightness,
+  Brightness4,
   Person,
   KeyboardArrowDown,
 } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
-import { useThemeMode } from '@/lib/theme';
+import { useThemeMode } from '@/theme/ThemeProvider';
 import MobileLayout from './MobileLayout';
 import DesktopLayout from './DesktopLayout';
 
@@ -46,7 +46,7 @@ interface Props {
 export default function AppShell({ children, leagues: propsLeagues, activeLeague: propsActiveLeague }: Props) {
   const router = useRouter();
   const pathname = usePathname();
-  const { mode, cycleTheme } = useThemeMode();
+  const { mode, setMode } = useThemeMode();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -63,6 +63,12 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
   // Use props if provided, otherwise use internal state
   const leagues = propsLeagues || internalLeagues;
   const activeLeague = propsActiveLeague || internalActiveLeague;
+
+  // Cycle theme function
+  const cycleTheme = () => {
+    const next = mode === 'light' ? 'dark' : mode === 'dark' ? 'auto' : 'light';
+    setMode(next);
+  };
 
   // Load leagues and active league if not provided via props
   useEffect(() => {
@@ -155,7 +161,7 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
     window.location.reload();
   };
 
-  const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : SettingsBrightness;
+  const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : Brightness4;
 
   const isPicksPage = pathname?.startsWith('/picks');
   const isPlayoffsPage = pathname?.startsWith('/playoffs');
