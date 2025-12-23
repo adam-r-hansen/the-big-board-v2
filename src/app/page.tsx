@@ -12,6 +12,7 @@ type LeagueInfo = {
   id: string;
   league_id: string;
   season: number;
+  playoffs_enabled?: boolean;
   leagues_v2: {
     id: string;
     name: string;
@@ -48,6 +49,7 @@ export default function Home() {
               id,
               league_id,
               season,
+              playoffs_enabled,
               leagues_v2 (
                 id,
                 name
@@ -58,20 +60,55 @@ export default function Home() {
           .eq('active', true);
 
         if (participants && participants.length > 0) {
-          const leagueInfos = participants.map((p: any) => ({
-            id: p.league_seasons_v2.id,
-            league_id: p.league_seasons_v2.league_id,
-            season: p.league_seasons_v2.season,
-            leagues_v2: p.league_seasons_v2.leagues_v2,
-          }));
-          setLeagues(leagueInfos);
-
-          const lastLeagueId = localStorage.getItem('activeLeagueSeasonId');
-          const lastLeague = leagueInfos.find((l: LeagueInfo) => l.id === lastLeagueId);
-          const active = lastLeague || leagueInfos[0];
-          setActiveLeague(active);
+          const leagueList = participants
+            .map((p: any) => p.league_seasons_v2)
+            .filter(Boolean);
           
-          await loadDashboardStats(user.id, active.id);
+          setLeagues(leagueList);
+
+          const storedLeagueId = localStorage.getItem('activeLeagueSeasonId');
+          const active = leagueList.find((l: LeagueInfo) => l.id === storedLeagueId) || leagueList[0];
+          
+          if (active) {
+            setActiveLeague(active);
+            localStorage.setItem('activeLeagueSeasonId', active.id);
+
+            // Load stats for active league
+            const { data: standings } = await supabase
+              .from('standings_v2')
+              .select('*')
+              .eq('league_season_id', active.id)
+              .order('rank', { ascending: true });
+
+            if (standings) {
+              const userStanding = standings.find((s: any) => s.profile_id === user.id);
+              setUserRank(userStanding?.rank || null);
+              setSeasonPoints(userStanding?.total_points || 0);
+              setTotalMembers(standings.length);
+            }
+
+            // Get current week
+            const { data: games } = await supabase
+              .from('games')
+              .select('week')
+              .eq('season', active.season)
+              .order('week', { ascending: false })
+              .limit(1);
+
+            if (games && games.length > 0) {
+              setCurrentWeek(games[0].week);
+            }
+
+            // Get teams remaining
+            const { data: picks } = await supabase
+              .from('picks_v2')
+              .select('team_id')
+              .eq('profile_id', user.id)
+              .eq('league_season_id', active.id);
+
+            const usedTeams = new Set(picks?.map((p: any) => p.team_id) || []);
+            setTeamsRemaining(32 - usedTeams.size);
+          }
         }
       }
 
@@ -81,197 +118,105 @@ export default function Home() {
     loadData();
   }, [supabase]);
 
-  const loadDashboardStats = async (userId: string, leagueSeasonId: string) => {
-    const now = new Date();
-    const { data: nextGame } = await supabase
-      .from('games')
-      .select('week')
-      .eq('season', 2025)
-      .gte('game_utc', now.toISOString())
-      .order('game_utc', { ascending: true })
-      .limit(1)
-      .single();
-
-    const week = nextGame?.week || 14;
-    setCurrentWeek(week);
-
-    const { count } = await supabase
-      .from('league_season_participants_v2')
-      .select('*', { count: 'exact', head: true })
-      .eq('league_season_id', leagueSeasonId)
-      .eq('active', true);
-
-    setTotalMembers(count || 1);
-
-    // Get regular picks for this user
-    const { data: userPicks } = await supabase
-      .from('picks_v2')
-      .select('team_id, points')
-      .eq('league_season_id', leagueSeasonId)
-      .eq('profile_id', userId);
-
-    // FIXED: Get wrinkle picks for this user
-    const { data: userWrinklePicks } = await supabase
-      .from('wrinkle_picks_v2')
-      .select('points, wrinkles_v2!inner(league_season_id)')
-      .eq('profile_id', userId)
-      .eq('wrinkles_v2.league_season_id', leagueSeasonId);
-
-    if (userPicks) {
-      const usedTeamCount = new Set(userPicks.map(p => p.team_id)).size;
-      setTeamsRemaining(32 - usedTeamCount);
-      
-      // FIXED: Calculate total points including wrinkles
-      const regularPoints = userPicks.reduce((sum, p) => sum + (p.points || 0), 0);
-      const wrinklePoints = (userWrinklePicks || []).reduce((sum, p) => sum + (p.points || 0), 0);
-      setSeasonPoints(regularPoints + wrinklePoints);
-    }
-
-    // Get all regular picks for standings calculation
-    const { data: allPicks } = await supabase
-      .from('picks_v2')
-      .select('profile_id, points')
-      .eq('league_season_id', leagueSeasonId);
-
-    // FIXED: Get all wrinkle picks for standings calculation
-    const { data: allWrinklePicks } = await supabase
-      .from('wrinkle_picks_v2')
-      .select('profile_id, points, wrinkles_v2!inner(league_season_id)')
-      .eq('wrinkles_v2.league_season_id', leagueSeasonId);
-
-    if (allPicks) {
-      const pointsMap = new Map<string, number>();
-      
-      // Add regular pick points
-      allPicks.forEach(pick => {
-        const current = pointsMap.get(pick.profile_id) || 0;
-        pointsMap.set(pick.profile_id, current + (pick.points || 0));
-      });
-      
-      // FIXED: Add wrinkle pick points
-      (allWrinklePicks || []).forEach(pick => {
-        const current = pointsMap.get(pick.profile_id) || 0;
-        pointsMap.set(pick.profile_id, current + (pick.points || 0));
-      });
-      
-      const sorted = Array.from(pointsMap.entries()).sort((a, b) => b[1] - a[1]);
-      const rank = sorted.findIndex(([id]) => id === userId) + 1;
-      setUserRank(rank || null);
-    }
-  };
-
-  const handleLeagueChange = async (league: LeagueInfo) => {
+  const handleLeagueChange = (league: LeagueInfo) => {
     setActiveLeague(league);
     localStorage.setItem('activeLeagueSeasonId', league.id);
-    window.dispatchEvent(new Event('leagueChanged'));
-    if (user) {
-      await loadDashboardStats(user.id, league.id);
-    }
+    window.location.reload();
   };
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-      </Box>
+      <AppShell userEmail={user?.email} leagues={leagues} activeLeague={activeLeague}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <CircularProgress />
+        </Box>
+      </AppShell>
     );
   }
 
-  const seasonProgress = Math.round((currentWeek / 18) * 100);
+  const weeksRemaining = 18 - currentWeek;
+  const progressPercent = (currentWeek / 18) * 100;
 
   return (
     <AppShell 
-      userEmail={user?.email}
-      leagues={leagues}
+      userEmail={user?.email} 
+      leagues={leagues} 
       activeLeague={activeLeague}
       onLeagueChange={handleLeagueChange}
     >
-      <Box>
-        {/* Season Progress Card */}
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="h6" fontWeight={600}>
-              Season Progress
-            </Typography>
-            <Chip 
-              icon={<CalendarMonth />} 
-              label={`Week ${currentWeek} of 18`} 
-              size="small" 
-              color="primary" 
-            />
-          </Stack>
+      <Box sx={{ flexGrow: 1, p: 3 }}>
+        {/* Season Progress */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CalendarMonth />
+            Season Progress
+          </Typography>
           <LinearProgress 
             variant="determinate" 
-            value={seasonProgress} 
-            sx={{ height: 8, borderRadius: 4 }} 
+            value={progressPercent} 
+            sx={{ height: 10, borderRadius: 5, mb: 2 }}
           />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            {18 - currentWeek} weeks remaining in regular season
+          <Typography variant="body2" color="text.secondary">
+            {weeksRemaining} weeks remaining in regular season
           </Typography>
         </Paper>
 
-        {/* Quick Stats */}
-        <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+        {/* Your Stats */}
+        <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
           Your Stats
         </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 3 }}>
-          <Paper sx={{ p: 2.5, textAlign: 'center' }}>
-            <EmojiEvents sx={{ fontSize: 36, color: 'warning.main', mb: 1 }} />
-            <Typography variant="h4" fontWeight={700}>
-              {userRank ? `#${userRank}` : '-'}
+        
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+          gap: 2,
+          mb: 3
+        }}>
+          <Paper elevation={2} sx={{ p: 3, textAlign: 'center' }}>
+            <EmojiEvents sx={{ fontSize: 48, color: 'warning.main', mb: 1 }} />
+            <Typography variant="h3" fontWeight={700}>
+              #{userRank || '—'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Current Rank
             </Typography>
           </Paper>
-          
-          <Paper sx={{ p: 2.5, textAlign: 'center' }}>
-            <SportsFootball sx={{ fontSize: 36, color: 'primary.main', mb: 1 }} />
-            <Typography variant="h4" fontWeight={700}>
+
+          <Paper elevation={2} sx={{ p: 3, textAlign: 'center' }}>
+            <TrendingUp sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
+            <Typography variant="h3" fontWeight={700}>
+              {seasonPoints}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Season Points
+            </Typography>
+          </Paper>
+
+          <Paper elevation={2} sx={{ p: 3, textAlign: 'center' }}>
+            <People sx={{ fontSize: 48, color: 'info.main', mb: 1 }} />
+            <Typography variant="h3" fontWeight={700}>
+              {totalMembers}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Total Members
+            </Typography>
+          </Paper>
+
+          <Paper elevation={2} sx={{ p: 3, textAlign: 'center' }}>
+            <SportsFootball sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+            <Typography variant="h3" fontWeight={700}>
               {teamsRemaining}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Teams Left
             </Typography>
           </Paper>
-          
-          <Paper sx={{ p: 2.5, textAlign: 'center' }}>
-            <TrendingUp sx={{ fontSize: 36, color: 'success.main', mb: 1 }} />
-            <Typography variant="h4" fontWeight={700}>
-              {seasonPoints}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Total Points
-            </Typography>
-          </Paper>
         </Box>
 
-        {/* League Info */}
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Stack direction="row" alignItems="center" sx={{ gap: 1, mb: 2 }}>
-            <People color="action" />
-            <Typography variant="h6" fontWeight={600}>
-              League Info
-            </Typography>
-          </Stack>
-          <Stack spacing={1.5}>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography color="text.secondary">League</Typography>
-              <Typography fontWeight={600}>{activeLeague?.leagues_v2?.name}</Typography>
-            </Stack>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography color="text.secondary">Season</Typography>
-              <Typography fontWeight={600}>{activeLeague?.season}</Typography>
-            </Stack>
-            <Stack direction="row" justifyContent="space-between">
-              <Typography color="text.secondary">Members</Typography>
-              <Typography fontWeight={600}>{totalMembers}</Typography>
-            </Stack>
-          </Stack>
-        </Paper>
-
         {/* Standings */}
-        <Standings />
+        {activeLeague && (
+          <Standings leagueSeasonId={activeLeague.id} />
+        )}
       </Box>
     </AppShell>
   );
