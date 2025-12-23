@@ -9,16 +9,15 @@ import {
   CircularProgress, 
   Alert,
   Paper,
-  Grid,
   Chip,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { EmojiEvents, Lock } from '@mui/icons-material';
+import { EmojiEvents, Lock, Timer, CheckCircle } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
 import { createClient } from '@/lib/supabase/client';
-import { generateUnlockSchedule, isDraftComplete, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
+import { generateUnlockSchedule, isDraftComplete, isPickUnlocked, getNextUnlockForSeed, getTimeUntilUnlock, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
 
 type Team = {
   id: string;
@@ -239,6 +238,11 @@ export default function PlayoffsPage() {
     return myPicks.find(p => p.game_id === gameId);
   };
 
+  // Get next unlock info for timer
+  const nextUnlock = participant && schedule.length > 0 && !draftComplete 
+    ? getNextUnlockForSeed(schedule, participant.seed, now) 
+    : null;
+
   return (
     <AppShell>
       <Container maxWidth="xl" sx={{ py: 3 }}>
@@ -263,6 +267,46 @@ export default function PlayoffsPage() {
             )}
           </Stack>
         </Box>
+
+        {/* Next Pick Timer */}
+        {nextUnlock && isPlayoffParticipant && (
+          <Paper 
+            elevation={3} 
+            sx={{ 
+              p: 3, 
+              mb: 3, 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <Timer sx={{ fontSize: 48 }} />
+              <Box sx={{ flexGrow: 1 }}>
+                <Typography variant="h6" fontWeight={700}>
+                  Next Pick Unlocks In
+                </Typography>
+                <Typography variant="h3" fontWeight={700}>
+                  {getTimeUntilUnlock(nextUnlock.unlockTime, now)}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }}>
+                  Pick Position #{nextUnlock.pickPosition}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+        )}
+
+        {/* All Picks Made Banner */}
+        {isPlayoffParticipant && draftComplete && myPicks.length === 4 && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <CheckCircle />
+              <Typography variant="body1" fontWeight={600}>
+                All picks made! You can swap any pick once per hour until games lock.
+              </Typography>
+            </Stack>
+          </Alert>
+        )}
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
