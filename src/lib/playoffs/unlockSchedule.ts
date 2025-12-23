@@ -31,31 +31,31 @@ const WEEK_18_DRAFT_ORDER: [number, number][] = [
 ];
 
 const INTERVAL_HOURS = 3;
-const SLEEP_START_HOUR = 20; // 8pm PT
-const SLEEP_END_HOUR = 9;   // 9am PT
+
+/**
+ * Check if a time is during sleep hours in PT (8pm-9am)
+ */
+function isDuringSleepHours(date: Date): boolean {
+  // PT is UTC-8
+  const utcHours = date.getUTCHours();
+  const ptHours = (utcHours - 8 + 24) % 24;
+  
+  // Sleep hours: 20 (8pm) through 8 (8:59am)
+  return ptHours >= 20 || ptHours < 9;
+}
 
 /**
  * Calculate the next valid unlock time, respecting sleep hours
  */
 function addHoursWithSleep(startTime: Date, hoursToAdd: number): Date {
-  const result = new Date(startTime);
-  let remainingHours = hoursToAdd;
-
-  while (remainingHours > 0) {
+  let result = new Date(startTime);
+  
+  // Add the hours
+  result.setHours(result.getHours() + hoursToAdd);
+  
+  // If we land during sleep hours, jump to 9am PT the next day
+  while (isDuringSleepHours(result)) {
     result.setHours(result.getHours() + 1);
-    
-    // Get hour in PT (UTC-8)
-    // Convert UTC to PT by subtracting 8 hours
-    const utcHour = result.getUTCHours();
-    const ptHour = (utcHour - 8 + 24) % 24;
-    
-    // Skip sleep hours (8pm-9am PT = hours 20-23 and 0-8)
-    if (ptHour >= SLEEP_START_HOUR || ptHour < SLEEP_END_HOUR) {
-      // Don't count this hour, we're in sleep mode
-      continue;
-    }
-    
-    remainingHours--;
   }
 
   return result;
