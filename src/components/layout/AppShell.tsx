@@ -28,22 +28,31 @@ import { useThemeMode } from '@/theme/ThemeProvider';
 import MobileLayout from './MobileLayout';
 import DesktopLayout from './DesktopLayout';
 
-interface League {
+type LeagueInfo = {
   id: string;
+  league_id: string;
   season: number;
   leagues_v2: {
     id: string;
     name: string;
   };
-}
+};
 
 interface Props {
   children: ReactNode;
-  leagues?: League[];
-  activeLeague?: League;
+  userEmail?: string;
+  leagues?: LeagueInfo[];
+  activeLeague?: LeagueInfo | null;
+  onLeagueChange?: (league: LeagueInfo) => void;
 }
 
-export default function AppShell({ children, leagues: propsLeagues, activeLeague: propsActiveLeague }: Props) {
+export default function AppShell({ 
+  children, 
+  userEmail: propsUserEmail,
+  leagues: propsLeagues, 
+  activeLeague: propsActiveLeague,
+  onLeagueChange
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { mode, setMode } = useThemeMode();
@@ -55,14 +64,15 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
   const [userEmail, setUserEmail] = useState('');
 
   // Internal state for leagues if not provided via props
-  const [internalLeagues, setInternalLeagues] = useState<League[]>([]);
-  const [internalActiveLeague, setInternalActiveLeague] = useState<League | null>(null);
+  const [internalLeagues, setInternalLeagues] = useState<LeagueInfo[]>([]);
+  const [internalActiveLeague, setInternalActiveLeague] = useState<LeagueInfo | null>(null);
 
   const supabase = createClient();
 
   // Use props if provided, otherwise use internal state
   const leagues = propsLeagues || internalLeagues;
-  const activeLeague = propsActiveLeague || internalActiveLeague;
+  const activeLeague = propsActiveLeague !== undefined ? propsActiveLeague : internalActiveLeague;
+  const email = propsUserEmail || userEmail;
 
   // Cycle theme function
   const cycleTheme = () => {
@@ -72,7 +82,7 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
 
   // Load leagues and active league if not provided via props
   useEffect(() => {
-    if (propsLeagues && propsActiveLeague) return; // Skip if provided via props
+    if (propsLeagues && propsActiveLeague !== undefined) return; // Skip if provided via props
 
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -80,27 +90,31 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
         setUserEmail(user.email || '');
 
         // Load leagues
-        const { data: leaguesData } = await supabase
+        const { data: participants } = await supabase
           .from('league_season_participants_v2')
           .select(`
-            league_season:league_seasons_v2(
+            league_seasons_v2 (
               id,
+              league_id,
               season,
-              leagues_v2(id, name)
+              leagues_v2 (
+                id,
+                name
+              )
             )
           `)
           .eq('profile_id', user.id)
           .eq('active', true);
 
-        const flatLeagues = (leaguesData || [])
-          .map((p: any) => p.league_season)
+        const flatLeagues = (participants || [])
+          .map((p: any) => p.league_seasons_v2)
           .filter(Boolean);
 
         setInternalLeagues(flatLeagues);
 
         // Set active league from localStorage or default to first
         const storedLeagueId = localStorage.getItem('activeLeagueSeasonId');
-        const active = flatLeagues.find((l: League) => l.id === storedLeagueId) || flatLeagues[0];
+        const active = flatLeagues.find((l: LeagueInfo) => l.id === storedLeagueId) || flatLeagues[0] || null;
         if (active) {
           setInternalActiveLeague(active);
           localStorage.setItem('activeLeagueSeasonId', active.id);
@@ -112,6 +126,8 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
   }, [supabase, propsLeagues, propsActiveLeague]);
 
   useEffect(() => {
+    if (propsUserEmail) return;
+    
     const loadUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -119,7 +135,7 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
       }
     };
     loadUser();
-  }, [supabase]);
+  }, [supabase, propsUserEmail]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -153,12 +169,16 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
     setLeagueAnchorEl(null);
   };
 
-  const handleLeagueSelect = (league: League) => {
-    setInternalActiveLeague(league);
-    localStorage.setItem('activeLeagueSeasonId', league.id);
+  const handleLeagueSelect = (league: LeagueInfo) => {
+    if (onLeagueChange) {
+      onLeagueChange(league);
+    } else {
+      setInternalActiveLeague(league);
+      localStorage.setItem('activeLeagueSeasonId', league.id);
+      // Refresh the page to load new league data
+      window.location.reload();
+    }
     handleLeagueClose();
-    // Refresh the page to load new league data
-    window.location.reload();
   };
 
   const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : Brightness4;
@@ -187,11 +207,11 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
               color="inherit"
               onClick={handleLeagueMenu}
               endIcon={<KeyboardArrowDown />}
-              sx={{ textTransform: 'none' }}
+              sx={{ ml: 2, textTransform: 'none' }}
             >
-              {internalActiveLeague?.leagues_v2?.name}
+              {activeLeague.leagues_v2.name}
               <Chip 
-                label={internalActiveLeague?.season} 
+                label={activeLeague.season} 
                 size="small" 
                 sx={{ ml: 1, height: 20, bgcolor: 'rgba(255,255,255,0.2)' }} 
               />
@@ -203,7 +223,7 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
             open={Boolean(leagueAnchorEl)}
             onClose={handleLeagueClose}
           >
-            {internalLeagues.map((league) => (
+            {leagues.map((league) => (
               <MenuItem 
                 key={league.id}
                 onClick={() => handleLeagueSelect(league)}
@@ -268,7 +288,7 @@ export default function AppShell({ children, leagues: propsLeagues, activeLeague
           >
             <MenuItem disabled>
               <Typography variant="body2" color="text.secondary">
-                {userEmail}
+                {email}
               </Typography>
             </MenuItem>
             <MenuItem onClick={handleProfile}>Profile</MenuItem>
