@@ -144,8 +144,7 @@ async function initializeWeek17(
     playoff_round_id: player.seed <= 4 ? semifinalRound.id : nonPlayoffRound.id,
     profile_id: player.profileId,
     seed: player.seed,
-    regular_season_points: player.points,
-    picks_available: player.seed <= 4 ? 4 : 5, // Semifinal gets 4 picks, non-playoff gets 5
+    picks_available: 4,
   }));
 
   const { error: participantsError } = await supabase
@@ -174,7 +173,7 @@ async function initializeWeek18(
     .from('playoff_participants_v2')
     .select(`
       *,
-      round:playoff_rounds_v2!inner(week, round_type)
+      round:playoff_rounds_v2!inner(week, round_type, league_season_id)
     `)
     .eq('round.league_season_id', leagueSeasonId)
     .eq('round.week', 17)
@@ -216,8 +215,7 @@ async function initializeWeek18(
     playoff_round_id: championshipRound.id,
     profile_id: finalist.profile_id,
     seed: finalist.championshipSeed,
-    regular_season_points: finalist.regular_season_points,
-    picks_available: 4, // Championship gets 4 picks
+    picks_available: 4,
   }));
 
   const { error: participantsError } = await supabase
