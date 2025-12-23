@@ -62,6 +62,7 @@ export default function AppShell({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [leagueAnchorEl, setLeagueAnchorEl] = useState<null | HTMLElement>(null);
   const [userEmail, setUserEmail] = useState('');
+  const [playoffsEnabled, setPlayoffsEnabled] = useState(false);
 
   // Internal state for leagues if not provided via props
   const [internalLeagues, setInternalLeagues] = useState<LeagueInfo[]>([]);
@@ -124,6 +125,23 @@ export default function AppShell({
 
     loadData();
   }, [supabase, propsLeagues, propsActiveLeague]);
+
+  // Check if playoffs are enabled for active league
+  useEffect(() => {
+    const checkPlayoffs = async () => {
+      if (!activeLeague) return;
+
+      const { data: settings } = await supabase
+        .from('playoff_settings_v2')
+        .select('playoffs_enabled')
+        .eq('league_season_id', activeLeague.id)
+        .single();
+
+      setPlayoffsEnabled(settings?.playoffs_enabled || false);
+    };
+
+    checkPlayoffs();
+  }, [activeLeague, supabase]);
 
   useEffect(() => {
     if (propsUserEmail) return;
@@ -253,19 +271,21 @@ export default function AppShell({
             Make Picks
           </Button>
 
-          
-          <Button
-            color="inherit"
-            onClick={() => router.push('/playoffs')}
-            sx={{
-              ml: 2,
-              fontWeight: isPlayoffsPage ? 700 : 400,
-              borderBottom: isPlayoffsPage ? '2px solid white' : 'none',
-              borderRadius: 0,
-            }}
-          >
-            Playoffs
-          </Button>
+          {/* Only show Playoffs button if enabled */}
+          {playoffsEnabled && (
+            <Button
+              color="inherit"
+              onClick={() => router.push('/playoffs')}
+              sx={{
+                ml: 2,
+                fontWeight: isPlayoffsPage ? 700 : 400,
+                borderBottom: isPlayoffsPage ? '2px solid white' : 'none',
+                borderRadius: 0,
+              }}
+            >
+              Playoffs
+            </Button>
+          )}
 
           <Box sx={{ flexGrow: 1 }} />
 
