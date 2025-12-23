@@ -12,9 +12,23 @@ jobs:
     steps:
       - name: Process Playoff Transitions
         run: |
-          curl -X POST \
+          echo "Calling playoff transition endpoint..."
+          RESPONSE=$(curl -L -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.PLAYOFF_TRANSITION_SECRET }}" \
-            "https://${{ secrets.VERCEL_URL }}/api/playoffs/transition"
+            "https://${{ secrets.VERCEL_URL }}/api/playoffs/transition" \
+            -w "\nHTTP_CODE:%{http_code}" \
+            -s)
+          
+          echo "$RESPONSE"
+          
+          HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Transition completed successfully"
+            exit 0
+          else
+            echo "❌ Transition failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
         env:
           VERCEL_URL: ${{ secrets.VERCEL_URL }}
