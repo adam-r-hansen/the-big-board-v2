@@ -1,123 +1,119 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { 
-  Box, 
-  AppBar, 
-  Toolbar, 
-  Typography, 
+import {
+  AppBar,
+  Box,
+  Toolbar,
+  Typography,
+  Button,
   IconButton,
-  Avatar,
   Menu,
   MenuItem,
+  Avatar,
+  Chip,
   useMediaQuery,
   useTheme,
-  Button,
-  Chip,
 } from '@mui/material';
-import { 
-  LightMode, 
-  DarkMode, 
-  Brightness4,
+import {
+  LightMode,
+  DarkMode,
+  SettingsBrightness,
   Person,
   KeyboardArrowDown,
 } from '@mui/icons-material';
-import { useThemeMode } from '@/theme/ThemeProvider';
 import { createClient } from '@/lib/supabase/client';
-import DesktopLayout from './DesktopLayout';
+import { useThemeMode } from '@/lib/theme';
 import MobileLayout from './MobileLayout';
+import DesktopLayout from './DesktopLayout';
 
-type LeagueInfo = {
+interface League {
   id: string;
-  league_id: string;
   season: number;
   leagues_v2: {
     id: string;
     name: string;
   };
-};
-
-interface Props {
-  children: React.ReactNode;
-  userEmail?: string;
-  leagues?: LeagueInfo[];
-  activeLeague?: LeagueInfo | null;
-  onLeagueChange?: (league: LeagueInfo) => void;
 }
 
-export default function AppShell({ 
-  children, 
-  userEmail,
-  leagues = [],
-  activeLeague,
-  onLeagueChange,
-}: Props) {
+interface Props {
+  children: ReactNode;
+  leagues?: League[];
+  activeLeague?: League;
+}
+
+export default function AppShell({ children, leagues: propsLeagues, activeLeague: propsActiveLeague }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const { mode, cycleTheme } = useThemeMode();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
-  const { mode, setMode } = useThemeMode();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [internalUserEmail, setInternalUserEmail] = useState<string | undefined>(userEmail);
-  const [internalLeagues, setInternalLeagues] = useState<LeagueInfo[]>(leagues);
-  const [internalActiveLeague, setInternalActiveLeague] = useState<LeagueInfo | null | undefined>(activeLeague);
   const [leagueAnchorEl, setLeagueAnchorEl] = useState<null | HTMLElement>(null);
+  const [userEmail, setUserEmail] = useState('');
+
+  // Internal state for leagues if not provided via props
+  const [internalLeagues, setInternalLeagues] = useState<League[]>([]);
+  const [internalActiveLeague, setInternalActiveLeague] = useState<League | null>(null);
 
   const supabase = createClient();
 
-  // Self-load data if props not provided
+  // Use props if provided, otherwise use internal state
+  const leagues = propsLeagues || internalLeagues;
+  const activeLeague = propsActiveLeague || internalActiveLeague;
+
+  // Load leagues and active league if not provided via props
   useEffect(() => {
+    if (propsLeagues && propsActiveLeague) return; // Skip if provided via props
+
     const loadData = async () => {
-      if (!userEmail || leagues.length === 0) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setInternalUserEmail(user.email || undefined);
-          
-          const { data: participants } = await supabase
-            .from('league_season_participants_v2')
-            .select(`
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email || '');
+
+        // Load leagues
+        const { data: leaguesData } = await supabase
+          .from('league_season_participants_v2')
+          .select(`
+            league_season:league_seasons_v2(
               id,
-              league_season_id,
-              league_seasons_v2 (
-                id,
-                league_id,
-                season,
-                leagues_v2 (
-                  id,
-                  name
-                )
-              )
-            `)
-            .eq('profile_id', user.id)
-            .eq('active', true);
-          
-          if (participants && participants.length > 0) {
-            const leagueInfos = participants.map((p: any) => ({
-              id: p.league_seasons_v2.id,
-              league_id: p.league_seasons_v2.league_id,
-              season: p.league_seasons_v2.season,
-              leagues_v2: p.league_seasons_v2.leagues_v2,
-            }));
-            setInternalLeagues(leagueInfos);
-            
-            const lastLeagueId = localStorage.getItem('activeLeagueSeasonId');
-            const lastLeague = leagueInfos.find((l: LeagueInfo) => l.id === lastLeagueId);
-            const selectedLeague = lastLeague || leagueInfos[0];
-            
-            // Always ensure localStorage is set
-            if (!lastLeagueId && selectedLeague) {
-              localStorage.setItem('activeLeagueSeasonId', selectedLeague.id);
-            }
-            
-            setInternalActiveLeague(selectedLeague);
-            onLeagueChange?.(selectedLeague);
-          }
+              season,
+              leagues_v2(id, name)
+            )
+          `)
+          .eq('profile_id', user.id)
+          .eq('active', true);
+
+        const flatLeagues = (leaguesData || [])
+          .map((p: any) => p.league_season)
+          .filter(Boolean);
+
+        setInternalLeagues(flatLeagues);
+
+        // Set active league from localStorage or default to first
+        const storedLeagueId = localStorage.getItem('activeLeagueSeasonId');
+        const active = flatLeagues.find((l: League) => l.id === storedLeagueId) || flatLeagues[0];
+        if (active) {
+          setInternalActiveLeague(active);
+          localStorage.setItem('activeLeagueSeasonId', active.id);
         }
       }
     };
+
     loadData();
-  }, [supabase, userEmail, leagues.length]);
+  }, [supabase, propsLeagues, propsActiveLeague]);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email || '');
+      }
+    };
+    loadUser();
+  }, [supabase]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -127,77 +123,64 @@ export default function AppShell({
     setAnchorEl(null);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/auth/login');
+    handleClose();
+  };
+
+  const handleProfile = () => {
+    router.push('/profile');
+    handleClose();
+  };
+
+  const handleAdmin = () => {
+    router.push('/admin');
+    handleClose();
+  };
+
   const handleLeagueMenu = (event: React.MouseEvent<HTMLElement>) => {
-    if (internalLeagues.length > 1) {
-      setLeagueAnchorEl(event.currentTarget);
-    }
+    setLeagueAnchorEl(event.currentTarget);
   };
 
   const handleLeagueClose = () => {
     setLeagueAnchorEl(null);
   };
 
-  const handleLeagueSelect = (league: LeagueInfo) => {
-    // Update localStorage
+  const handleLeagueSelect = (league: League) => {
+    setInternalActiveLeague(league);
     localStorage.setItem('activeLeagueSeasonId', league.id);
-    
-    // Call parent handler
-    onLeagueChange?.(league);
-            setInternalActiveLeague(league);
-    
-    // Dispatch custom event for other components
-    window.dispatchEvent(new CustomEvent('leagueChanged', { detail: league.id }));
-    
     handleLeagueClose();
+    // Refresh the page to load new league data
+    window.location.reload();
   };
 
-  const handleProfile = () => {
-    handleClose();
-    router.push('/profile');
-  };
+  const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : SettingsBrightness;
 
-  const handleAdmin = () => {
-    handleClose();
-    router.push('/admin');
-  };
-
-  const handleLogout = async () => {
-    handleClose();
-    await supabase.auth.signOut();
-    window.location.href = '/auth/login';
-  };
-
-  const cycleTheme = () => {
-    const modes: Array<'light' | 'dark' | 'auto'> = ['light', 'dark', 'auto'];
-    const currentIndex = modes.indexOf(mode);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    setMode(modes[nextIndex]);
-  };
-
-  const ThemeIcon = mode === 'light' ? LightMode : mode === 'dark' ? DarkMode : Brightness4;
-
-  const isPicksPage = pathname === '/picks';
-  const isPlayoffsPage = pathname === '/playoffs';
+  const isPicksPage = pathname?.startsWith('/picks');
+  const isPlayoffsPage = pathname?.startsWith('/playoffs');
+  const showLeagueSelector = leagues.length > 1;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {/* Top App Bar */}
-      <AppBar position="sticky" elevation={1}>
+      {/* Header */}
+      <AppBar position="static" elevation={0}>
         <Toolbar>
-          <Typography 
-            variant="h6" 
-            sx={{ fontWeight: 700, cursor: 'pointer', mr: 2 }}
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ cursor: 'pointer', fontWeight: 700 }}
             onClick={() => router.push('/')}
           >
             The Big Board
           </Typography>
 
-          {/* League Switcher */}
-          {internalActiveLeague && (
+          {/* League Selector (only show if multiple leagues) */}
+          {showLeagueSelector && activeLeague && (
             <Button
               color="inherit"
               onClick={handleLeagueMenu}
-              endIcon={internalLeagues.length > 1 ? <KeyboardArrowDown /> : undefined}
+              endIcon={<KeyboardArrowDown />}
               sx={{ textTransform: 'none' }}
             >
               {internalActiveLeague?.leagues_v2?.name}
@@ -292,6 +275,8 @@ export default function AppShell({
       {/* Main Content - Desktop or Mobile Layout */}
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         {isPicksPage ? (
+          children
+        ) : isPlayoffsPage ? (
           children
         ) : isMobile ? (
           <MobileLayout>{children}</MobileLayout>
