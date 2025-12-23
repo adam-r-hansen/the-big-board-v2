@@ -214,9 +214,7 @@ export default function Home() {
         </Box>
 
         {/* Standings */}
-        {activeLeague && (
-          <Standings leagueSeasonId={activeLeague.id} />
-        )}
+        <Standings />
       </Box>
     </AppShell>
   );
