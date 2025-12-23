@@ -144,7 +144,7 @@ export default function AppShell({
     };
 
     checkPlayoffs();
-  }, [activeLeague?.id, supabase]); // Depend on activeLeague.id so it re-checks when league changes
+  }, [activeLeague?.id, supabase]);
 
   useEffect(() => {
     if (propsUserEmail) return;
@@ -190,14 +190,24 @@ export default function AppShell({
     setLeagueAnchorEl(null);
   };
 
-  const handleLeagueSelect = (league: LeagueInfo) => {
+  const handleLeagueSelect = async (league: LeagueInfo) => {
     if (onLeagueChange) {
       onLeagueChange(league);
     } else {
       setInternalActiveLeague(league);
       localStorage.setItem('activeLeagueSeasonId', league.id);
-      // Refresh the page to load new league data
-      window.location.reload();
+      
+      // Check playoffs for new league immediately
+      const { data: settings } = await supabase
+        .from('playoff_settings_v2')
+        .select('playoffs_enabled')
+        .eq('league_season_id', league.id)
+        .single();
+      
+      setPlayoffsEnabled(settings?.playoffs_enabled || false);
+      
+      // Navigate to home to refresh data
+      router.push('/');
     }
     handleLeagueClose();
   };
