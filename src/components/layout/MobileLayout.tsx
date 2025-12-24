@@ -553,7 +553,7 @@ export default function MobileLayout({ children }: Props) {
           open={Boolean(weekMenuAnchor)}
           onClose={() => setWeekMenuAnchor(null)}
         >
-          {Array.from({ length, 18 }, (_, i) => i + 1).map((week) => (
+          {Array.from({ length: 18 }, (_, i) => i + 1).map((week) => (
             <MenuItem
               key={week}
               onClick={() => handleWeekSelect(week)}
