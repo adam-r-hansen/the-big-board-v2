@@ -74,6 +74,7 @@ export default function Home() {
   const [playoffPicks, setPlayoffPicks] = useState<PlayoffPick[]>([]);
   const [draftStartTime, setDraftStartTime] = useState<Date | null>(null);
   const [roundType, setRoundType] = useState<'semifinal' | 'championship'>('semifinal');
+  const [playoffWeek, setPlayoffWeek] = useState<number>(17);
   const [now] = useState(new Date());
 
   const supabase = createClient();
@@ -132,14 +133,18 @@ export default function Home() {
 
             // If playoffs are active, load playoff data
             if (playoffsActive) {
+              // Look for an active playoff round (try latest week first, then week 17)
               const { data: roundData } = await supabase
                 .from('playoff_rounds_v2')
-                .select('id, draft_start_time, round_type')
+                .select('id, draft_start_time, round_type, week')
                 .eq('league_season_id', active.id)
-                .eq('week', latestWeek)
+                .in('week', [17, 18])
+                .order('week', { ascending: false })
+                .limit(1)
                 .single();
 
               if (roundData) {
+                setPlayoffWeek(roundData.week);
                 setDraftStartTime(roundData.draft_start_time ? new Date(roundData.draft_start_time) : null);
                 setRoundType(roundData.round_type as 'semifinal' | 'championship');
 
@@ -247,7 +252,7 @@ export default function Home() {
   // Check if a pick is unlocked for a user
   const isPickUnlockedForUser = (participant: PlayoffParticipant, pickPosition: number): boolean => {
     if (!draftStartTime) return false;
-    const schedule = generateUnlockSchedule(currentWeek as 17 | 18, draftStartTime, roundType);
+    const schedule = generateUnlockSchedule(playoffWeek as 17 | 18, draftStartTime, roundType);
     const draftComplete = isDraftComplete(schedule, now);
     if (draftComplete) return true;
     return isPickUnlocked(schedule, participant.seed, pickPosition, now);
