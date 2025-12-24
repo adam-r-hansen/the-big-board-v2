@@ -26,7 +26,6 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import Standings from './Standings';
 import NFLScores from './NFLScores';
-import Reactions from '@/components/reactions/Reactions';
 import { isPickUnlocked, isDraftComplete, generateUnlockSchedule } from '@/lib/playoffs/unlockSchedule';
 
 type Team = {
@@ -345,8 +344,7 @@ export default function MobileLayout({ children }: Props) {
     return new Date(pick.game.game_utc) <= now;
   };
 
-  const PickCard = ({ pick, showReactions = false }: { pick: Pick; showReactions?: boolean }) => {
-    const isLocked = pick.game?.game_utc ? new Date(pick.game.game_utc) <= new Date() : false;
+  const PickCard = ({ pick }: { pick: Pick }) => {
     const isComplete = pick.status === 'FINAL';
     const isWin = isComplete && (pick.points || 0) > 0;
 
@@ -407,18 +405,11 @@ export default function MobileLayout({ children }: Props) {
             </Typography>
           )}
         </Box>
-
-        {showReactions && isLocked && userId && (
-          <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-            <Reactions pickId={pick.id} currentUserId={userId} />
-          </Box>
-        )}
       </Paper>
     );
   };
 
-  const WrinklePickCard = ({ pick, showReactions = false }: { pick: WrinklePick; showReactions?: boolean }) => {
-    const isLocked = pick.game?.game_utc ? new Date(pick.game.game_utc) <= new Date() : false;
+  const WrinklePickCard = ({ pick }: { pick: WrinklePick }) => {
     const isComplete = pick.status === 'FINAL';
     const isWin = isComplete && (pick.points || 0) > 0;
 
@@ -480,12 +471,6 @@ export default function MobileLayout({ children }: Props) {
             </Typography>
           )}
         </Box>
-
-        {showReactions && isLocked && userId && (
-          <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-            <Reactions pickId={pick.id} currentUserId={userId} />
-          </Box>
-        )}
       </Paper>
     );
   };
@@ -603,9 +588,9 @@ export default function MobileLayout({ children }: Props) {
                     <Stack spacing={0.5}>
                       {picks.map((pick) => 
                         pick.pickType === 'regular' ? (
-                          <PickCard key={`regular-${pick.id}`} pick={pick} showReactions />
+                          <PickCard key={`regular-${pick.id}`} pick={pick} />
                         ) : (
-                          <WrinklePickCard key={`wrinkle-${pick.id}`} pick={pick} showReactions />
+                          <WrinklePickCard key={`wrinkle-${pick.id}`} pick={pick} />
                         )
                       )}
                     </Stack>
