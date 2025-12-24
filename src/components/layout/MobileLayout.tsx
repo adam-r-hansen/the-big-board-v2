@@ -1,38 +1,57 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Box, Paper, Tabs, Tab, Typography, Stack, Chip, CircularProgress, Button, Menu, MenuItem } from '@mui/material';
-import { SportsFootball, Leaderboard, EmojiEvents, Check, Lock, Stars, ExpandMore } from '@mui/icons-material';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import {
+  Box,
+  Typography,
+  Paper,
+  Tabs,
+  Tab,
+  Stack,
+  CircularProgress,
+  Menu,
+  MenuItem,
+  Chip,
+} from '@mui/material';
+import {
+  SportsFootball,
+  Leaderboard,
+  EmojiEvents,
+  ExpandMore,
+  Lock,
+  LockOpen,
+  CheckCircle,
+} from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
-import NFLScores from './NFLScores';
 import Standings from './Standings';
-import Reactions from '@/components/Reactions';
+import NFLScores from './NFLScores';
+import Reactions from '@/components/reactions/Reactions';
+import { isPickUnlocked, isDraftComplete, generateUnlockSchedule } from '@/lib/playoffs/unlockSchedule';
+
+type Team = {
+  id: string;
+  name: string;
+  short_name: string;
+  abbreviation: string;
+  color_primary: string;
+  color_secondary: string;
+  logo: string;
+};
+
+type Game = {
+  id: string;
+  game_utc: string;
+};
 
 type Pick = {
   id: string;
-  week: number;
   team_id: string;
-  game_id: string;
+  week: number;
   points: number;
-  multiplier: number;
-  locked_at: string | null;
-  profile_id: string;
-  auto_assigned?: boolean;
-  team: {
-    short_name: string;
-    abbreviation: string;
-    color_primary: string;
-    logo: string;
-  };
-  game: {
-    status: string;
-    home_team: string;
-    away_team: string;
-    home_score: number | null;
-    away_score: number | null;
-    game_utc: string;
-  };
+  status: string;
+  team?: Team;
+  game?: { status: string; game_utc: string };
   profile?: {
     display_name: string;
     profile_color: string;
@@ -41,32 +60,36 @@ type Pick = {
 
 type WrinklePick = {
   id: string;
-  wrinkle_id: string;
   team_id: string;
+  wrinkle_type: string;
   points: number;
-  profile_id: string;
-  wrinkle: {
-    name: string;
-    kind: string;
-    week: number;
-    league_season_id: string;
-    game: {
-      status: string;
-      home_team: string;
-      away_team: string;
-      home_score: number | null;
-      away_score: number | null;
-    } | null;
-  };
-  team: {
-    short_name: string;
-    abbreviation: string;
-    color_primary: string;
-    logo: string;
-  };
+  status: string;
+  team?: Team;
+  game?: { status: string; game_utc: string };
   profile?: {
     display_name: string;
     profile_color: string;
+  };
+};
+
+type PlayoffPick = {
+  id: string;
+  profile_id: string;
+  team_id: string;
+  pick_position: number;
+  game_id: string;
+  team?: Team;
+  game?: Game;
+};
+
+type PlayoffParticipant = {
+  id: string;
+  profile_id: string;
+  seed: number;
+  picks_available: number;
+  profile?: {
+    display_name: string;
+    email: string;
   };
 };
 
@@ -94,13 +117,6 @@ interface Props {
 
 export default function MobileLayout({ children }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
-  
-  // For non-dashboard pages, just render children
-  const isTabRoute = pathname === '/' || pathname === '/picks' || pathname === '/playoffs';
-  if (!isTabRoute) {
-    return <Box sx={{ p: 2, overflow: 'auto', height: 'calc(100vh - 56px)' }}>{children}</Box>;
-  }
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
@@ -115,6 +131,15 @@ export default function MobileLayout({ children }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [anyGamesLocked, setAnyGamesLocked] = useState(false);
   const [weekMenuAnchor, setWeekMenuAnchor] = useState<null | HTMLElement>(null);
+  
+  // Playoff state
+  const [isPlayoffs, setIsPlayoffs] = useState(false);
+  const [playoffParticipants, setPlayoffParticipants] = useState<PlayoffParticipant[]>([]);
+  const [playoffPicks, setPlayoffPicks] = useState<PlayoffPick[]>([]);
+  const [draftStartTime, setDraftStartTime] = useState<Date | null>(null);
+  const [roundType, setRoundType] = useState<'semifinal' | 'championship'>('semifinal');
+  const [playoffWeek, setPlayoffWeek] = useState<number>(17);
+  const [now] = useState(new Date());
 
   const supabase = createClient();
 
@@ -141,6 +166,10 @@ export default function MobileLayout({ children }: Props) {
     const weekToLoad = week !== undefined ? week : actualCurrentWeek;
     setViewingWeek(weekToLoad);
 
+    // Check if we're in playoffs
+    const playoffsActive = weekToLoad >= 17;
+    setIsPlayoffs(playoffsActive);
+
     // Check if ANY games for the week have started (locked)
     const { data: lockedGames } = await supabase
       .from('games')
@@ -149,455 +178,232 @@ export default function MobileLayout({ children }: Props) {
       .eq('week', weekToLoad)
       .lt('game_utc', now.toISOString());
     
-    setAnyGamesLocked(!!(lockedGames && lockedGames.length > 0));
+    setAnyGamesLocked(!!lockedGames && lockedGames.length > 0);
 
-    // Get user's picks
+    // Load regular picks
+    const { data: picks } = await supabase
+      .from('picks_v2')
+      .select(`
+        id, team_id, week, points, status,
+        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+        game:games(status, game_utc)
+      `)
+      .eq('league_season_id', leagueId)
+      .eq('profile_id', user.id)
+      .eq('week', weekToLoad);
+
+    setWeekPicks((picks as Pick[]) || []);
+
+    const weekTotal = picks?.reduce((sum, p) => sum + (p.points || 0), 0) || 0;
+    setWeekPoints(weekTotal);
+
+    // Load league picks
     const { data: allPicks } = await supabase
       .from('picks_v2')
       .select(`
-        id,
-        week,
-        team_id,
-        game_id,
-        points,
-        multiplier,
-        locked_at,
-        profile_id,
-        auto_assigned,
-        team:teams(short_name, abbreviation, color_primary, logo),
-        game:games(status, home_team, away_team, home_score, away_score, game_utc),
+        id, team_id, week, points, status, profile_id,
+        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+        game:games(status, game_utc),
         profile:profiles(display_name, profile_color)
       `)
       .eq('league_season_id', leagueId)
-      .eq('profile_id', user.id);
+      .eq('week', weekToLoad)
+      .neq('profile_id', user.id);
 
-    let seasonTotal = 0;
-    let weekTotal = 0;
+    setLeaguePicks((allPicks as Pick[]) || []);
 
-    if (allPicks) {
-      const picks = (allPicks as unknown as Pick[]).map(p => ({
-        ...p,
-        multiplier: p.multiplier || 1,
-      }));
-      setWeekPicks(picks.filter(p => p.week === weekToLoad));
-      seasonTotal = picks.reduce((sum, p) => sum + (p.points || 0), 0);
-      weekTotal = picks.filter(p => p.week === weekToLoad).reduce((sum, p) => sum + (p.points || 0), 0);
-    } else {
-      setWeekPicks([]);
-    }
-
-    // Get ALL league picks for the week
-    const { data: allLeaguePicks } = await supabase
-      .from('picks_v2')
+    // Load wrinkle picks
+    const { data: myWrinkles } = await supabase
+      .from('wrinkle_picks_v2')
       .select(`
-        id,
-        week,
-        team_id,
-        game_id,
-        points,
-        multiplier,
-        locked_at,
-        profile_id,
-        auto_assigned,
-        team:teams(short_name, abbreviation, color_primary, logo),
-        game:games(status, home_team, away_team, home_score, away_score, game_utc),
-        profile:profiles(display_name, profile_color)
+        id, team_id, wrinkle_type, points, status,
+        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+        game:games(status, game_utc)
       `)
       .eq('league_season_id', leagueId)
+      .eq('profile_id', user.id)
       .eq('week', weekToLoad);
 
-    if (allLeaguePicks) {
-      const picks = (allLeaguePicks as unknown as Pick[]).map(p => ({
-        ...p,
-        multiplier: p.multiplier || 1,
-      }));
-      
-      const lockedPicks = picks.filter(p => {
-        const isLocked = !!p.locked_at || new Date(p.game.game_utc) < now;
-        return isLocked;
-      });
-      
-      setLeaguePicks(lockedPicks);
-    } else {
-      setLeaguePicks([]);
-    }
+    setWrinklePicks((myWrinkles as WrinklePick[]) || []);
 
-    // Get ALL league wrinkle picks for the week
-    const { data: allLeagueWrinklePicks } = await supabase
+    const wrinkleTotal = myWrinkles?.reduce((sum, p) => sum + (p.points || 0), 0) || 0;
+
+    // Load league wrinkle picks
+    const { data: allWrinkles } = await supabase
       .from('wrinkle_picks_v2')
       .select(`
-        id,
-        wrinkle_id,
-        team_id,
-        points,
-        profile_id,
-        wrinkle:wrinkles_v2!inner(
-          name,
-          kind,
-          week,
-          league_season_id,
-          game:games(status, home_team, away_team, home_score, away_score)
-        ),
-        team:teams(short_name, abbreviation, color_primary, logo),
+        id, team_id, wrinkle_type, points, status, profile_id,
+        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+        game:games(status, game_utc),
         profile:profiles(display_name, profile_color)
       `)
-      .eq('wrinkles_v2.league_season_id', leagueId)
-      .eq('wrinkles_v2.week', weekToLoad);
+      .eq('league_season_id', leagueId)
+      .eq('week', weekToLoad)
+      .neq('profile_id', user.id);
 
-    if (allLeagueWrinklePicks) {
-      const wPicks = allLeagueWrinklePicks as unknown as WrinklePick[];
-      
-      // Filter to only locked wrinkle picks
-      const lockedWrinklePicks = wPicks.filter(p => {
-        // OOF wrinkles: we need to check if the specific team's game has started
-        if (p.wrinkle.kind === 'bonus_game_oof') {
-          // For OOF, always show in league picks (game times checked elsewhere)
-          return true;
-        }
-        // Other wrinkles: only show with completed games
-        const game = p.wrinkle?.game;
-        if (!game) return false;
-        return game.status === 'FINAL';
-      });
-      
-      setLeagueWrinklePicks(lockedWrinklePicks);
-    } else {
-      setLeagueWrinklePicks([]);
-    }
+    setLeagueWrinklePicks((allWrinkles as WrinklePick[]) || []);
 
-    // Get user's wrinkle picks
-    const { data: allWrinklePicks } = await supabase
-      .from('wrinkle_picks_v2')
-      .select(`
-        id,
-        wrinkle_id,
-        team_id,
-        points,
-        profile_id,
-        wrinkle:wrinkles_v2(
-          name,
-          kind,
-          week,
-          league_season_id,
-          game:games(status, home_team, away_team, home_score, away_score)
-        ),
-        team:teams(short_name, abbreviation, color_primary, logo)
-      `)
-      .eq('profile_id', user.id);
+    // Load season total
+    const { data: standings } = await supabase
+      .from('standings_v2')
+      .select('total_points')
+      .eq('league_season_id', leagueId)
+      .eq('profile_id', user.id)
+      .single();
 
-    if (allWrinklePicks) {
-      const wPicks = allWrinklePicks as unknown as WrinklePick[];
-      const filteredWrinklePicks = wPicks.filter(
-        p => p.wrinkle?.league_season_id === leagueId && p.wrinkle?.week === weekToLoad
-      );
-      setWrinklePicks(filteredWrinklePicks);
-      
-      const leagueWrinklePicks = wPicks.filter(p => p.wrinkle?.league_season_id === leagueId);
-      seasonTotal += leagueWrinklePicks.reduce((sum, p) => sum + (p.points || 0), 0);
-      weekTotal += filteredWrinklePicks.reduce((sum, p) => sum + (p.points || 0), 0);
-    } else {
-      setWrinklePicks([]);
-    }
+    setSeasonPoints(standings?.total_points || 0);
 
-    setSeasonPoints(seasonTotal);
-    setWeekPoints(weekTotal);
-    setLoading(false);
-  }, [supabase]);
+    // Load playoff data if in playoffs
+    if (playoffsActive) {
+      const { data: roundData } = await supabase
+        .from('playoff_rounds_v2')
+        .select('id, draft_start_time, round_type, week')
+        .eq('league_season_id', leagueId)
+        .in('week', [17, 18])
+        .order('week', { ascending: false })
+        .limit(1)
+        .single();
 
-  useEffect(() => {
-    const storedLeagueId = localStorage.getItem('activeLeagueSeasonId');
-    if (storedLeagueId) {
-      setLeagueSeasonId(storedLeagueId);
-      loadData(storedLeagueId);
-    }
-  }, [loadData]);
+      if (roundData) {
+        setPlayoffWeek(roundData.week);
+        setDraftStartTime(roundData.draft_start_time ? new Date(roundData.draft_start_time) : null);
+        setRoundType(roundData.round_type as 'semifinal' | 'championship');
 
-  useEffect(() => {
-    const handleLeagueChange = () => {
-      const newLeagueId = localStorage.getItem('activeLeagueSeasonId');
-      if (newLeagueId) {
-        setLeagueSeasonId(newLeagueId);
-        loadData(newLeagueId);
+        const { data: participantsData } = await supabase
+          .from('playoff_participants_v2')
+          .select(`
+            id,
+            profile_id,
+            seed,
+            picks_available,
+            profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
+          `)
+          .eq('playoff_round_id', roundData.id)
+          .lte('seed', 4)
+          .order('seed', { ascending: true });
+
+        const transformedParticipants = (participantsData || []).map((p: any) => ({
+          ...p,
+          profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+        }));
+
+        setPlayoffParticipants(transformedParticipants);
+
+        const { data: picksData } = await supabase
+          .from('playoff_picks_v2')
+          .select(`
+            id,
+            profile_id,
+            team_id,
+            pick_position,
+            game_id,
+            team:teams(id, name, short_name, abbreviation, color_primary, logo),
+            game:games(id, game_utc)
+          `)
+          .eq('playoff_round_id', roundData.id);
+
+        const transformedPicks = (picksData || []).map((p: any) => ({
+          ...p,
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: Array.isArray(p.game) ? p.game[0] : p.game,
+        }));
+
+        setPlayoffPicks(transformedPicks);
       }
-    };
+    }
 
-    window.addEventListener('leagueChanged', handleLeagueChange);
-    return () => window.removeEventListener('leagueChanged', handleLeagueChange);
+    setLoading(false);
+  }, [supabase, now]);
+
+  useEffect(() => {
+    const leagueId = localStorage.getItem('activeLeagueSeasonId');
+    if (leagueId) {
+      setLeagueSeasonId(leagueId);
+      loadData(leagueId);
+    }
   }, [loadData]);
 
   const handleWeekSelect = (week: number) => {
+    setWeekMenuAnchor(null);
     if (leagueSeasonId) {
       loadData(leagueSeasonId, week);
     }
-    setWeekMenuAnchor(null);
   };
 
-  const PickCard = ({ pick, showName = false, showReactions = false }: { pick: Pick; showName?: boolean; showReactions?: boolean }) => {
-    const isLocked = !!pick.locked_at || new Date(pick.game.game_utc) < new Date();
-    const isComplete = pick.game.status === 'FINAL';
-    const isHome = pick.team_id === pick.game.home_team;
-    const teamScore = isHome ? pick.game.home_score : pick.game.away_score;
-    const oppScore = isHome ? pick.game.away_score : pick.game.home_score;
-    const isWinner = isComplete && teamScore !== null && oppScore !== null && teamScore > oppScore;
-    const gameTime = new Date(pick.game.game_utc);
-    const multiplier = pick.multiplier || 1;
+  // Check if a pick is unlocked for a user
+  const isPickUnlockedForUser = (participant: PlayoffParticipant, pickPosition: number): boolean => {
+    if (!draftStartTime) return false;
+    const schedule = generateUnlockSchedule(playoffWeek as 17 | 18, draftStartTime, roundType);
+    const draftComplete = isDraftComplete(schedule, now);
+    if (draftComplete) return true;
+    return isPickUnlocked(schedule, participant.seed, pickPosition, now);
+  };
+
+  // Check if game has started/locked
+  const isGameLocked = (pick: PlayoffPick): boolean => {
+    if (!pick.game?.game_utc) return false;
+    return new Date(pick.game.game_utc) <= now;
+  };
+
+  const PickCard = ({ pick, showReactions = false }: { pick: Pick; showReactions?: boolean }) => {
+    const isLocked = pick.game?.game_utc ? new Date(pick.game.game_utc) <= new Date() : false;
+    const isComplete = pick.status === 'FINAL';
+    const isWin = isComplete && (pick.points || 0) > 0;
 
     return (
       <Paper
+        elevation={2}
         sx={{
           p: 1.5,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1.5,
-          bgcolor: pick.team.color_primary,
+          bgcolor: pick.team?.color_primary || 'grey.800',
           color: 'white',
-          borderRadius: 2,
-          border: isComplete ? 3 : 0,
-          borderColor: isWinner ? 'success.main' : 'error.main',
-          position: 'relative',
-        }}
-      >
-        {multiplier > 1 && (
-          <Box
-            sx={{
-              position: 'absolute',
-              top: -8,
-              right: -8,
-              px: 0.75,
-              py: 0.25,
-              borderRadius: 1,
-              bgcolor: 'secondary.main',
-              color: 'white',
-              fontSize: 11,
-              fontWeight: 700,
-              border: '2px solid',
-              borderColor: 'background.paper',
-              zIndex: 1,
-            }}
-          >
-            x{multiplier}
-          </Box>
-        )}
-        
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box
-            sx={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              bgcolor: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Box
-              component="img"
-              src={pick.team.logo}
-              alt={pick.team.short_name}
-              sx={{ width: 24, height: 24, objectFit: 'contain' }}
-            />
-          </Box>
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            {showName && pick.profile && (
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                {pick.profile.display_name}
-              </Typography>
-            )}
-            <Typography variant="body2" fontWeight={600} noWrap>
-              {pick.team.short_name}
-            </Typography>
-            <Typography variant="caption" sx={{ opacity: 0.8 }}>
-              {isComplete 
-                ? `${teamScore} - ${oppScore}` 
-                : gameTime.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
-              }
-            </Typography>
-          </Box>
-          {isComplete && (
-            <Typography variant="body1" fontWeight={700}>
-              {isWinner ? `+${pick.points}` : '0'}
-            </Typography>
-          )}
-          {isLocked && !isComplete && <Lock fontSize="small" sx={{ opacity: 0.7 }} />}
-        </Box>
-
-        {showReactions && isLocked && userId && (
-          <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-            <Reactions pickId={pick.id} currentUserId={userId} />
-          </Box>
-        )}
-      </Paper>
-    );
-  };
-
-  const WrinklePickCard = ({ pick, showName = false, showReactions = false }: { pick: WrinklePick; showName?: boolean; showReactions?: boolean }) => {
-    const isLocked = true;
-    
-    if (!pick.wrinkle.game) {
-      return (
-        <Paper
-          sx={{
-            p: 1.5,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.5,
-            bgcolor: pick.team.color_primary,
-            color: 'white',
-            borderRadius: 2,
-            position: 'relative',
-          }}
-        >
-          <Box
-            sx={{
-              position: 'absolute',
-              top: -8,
-              right: -8,
-              px: 0.75,
-              py: 0.25,
-              borderRadius: 1,
-              bgcolor: 'secondary.main',
-              color: 'white',
-              fontSize: 11,
-              fontWeight: 700,
-              border: '2px solid',
-              borderColor: 'background.paper',
-              zIndex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.25,
-            }}
-          >
-            <Stars sx={{ fontSize: 12 }} />
-          </Box>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                bgcolor: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Box
-                component="img"
-                src={pick.team.logo}
-                alt={pick.team.short_name}
-                sx={{ width: 24, height: 24, objectFit: 'contain' }}
-              />
-            </Box>
-            <Box sx={{ flexGrow: 1 }}>
-              {showName && pick.profile && (
-                <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                  {pick.profile.display_name}
-                </Typography>
-              )}
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                {pick.wrinkle.name}
-              </Typography>
-              <Typography variant="body2" fontWeight={600}>
-                {pick.team.short_name}
-              </Typography>
-            </Box>
-            {pick.points > 0 && (
-              <Typography variant="body1" fontWeight={700}>
-                +{pick.points}
-              </Typography>
-            )}
-          </Box>
-          
-          {showReactions && isLocked && userId && (
-            <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-              <Reactions pickId={pick.id} currentUserId={userId} />
-            </Box>
-          )}
-        </Paper>
-      );
-    }
-
-    const isComplete = pick.wrinkle.game.status === 'FINAL';
-    const isHome = pick.team_id === pick.wrinkle.game.home_team;
-    const teamScore = isHome ? pick.wrinkle.game.home_score : pick.wrinkle.game.away_score;
-    const oppScore = isHome ? pick.wrinkle.game.away_score : pick.wrinkle.game.home_score;
-    const isWinner = isComplete && teamScore !== null && oppScore !== null && teamScore > oppScore;
-
-    return (
-      <Paper
-        sx={{
-          p: 1.5,
           display: 'flex',
-          flexDirection: 'column',
+          alignItems: 'center',
           gap: 1.5,
-          bgcolor: pick.team.color_primary,
-          color: 'white',
-          borderRadius: 2,
-          border: isComplete ? 3 : 0,
-          borderColor: isWinner ? 'success.main' : 'error.main',
-          position: 'relative',
         }}
       >
         <Box
           sx={{
-            position: 'absolute',
-            top: -8,
-            right: -8,
-            px: 0.75,
-            py: 0.25,
-            borderRadius: 1,
-            bgcolor: 'secondary.main',
-            color: 'white',
-            fontSize: 11,
-            fontWeight: 700,
-            border: '2px solid',
-            borderColor: 'background.paper',
-            zIndex: 1,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            bgcolor: 'white',
             display: 'flex',
             alignItems: 'center',
-            gap: 0.25,
+            justifyContent: 'center',
+            flexShrink: 0,
           }}
         >
-          <Stars sx={{ fontSize: 12 }} />
+          <Box
+            component="img"
+            src={pick.team?.logo}
+            alt={pick.team?.abbreviation}
+            sx={{ width: 28, height: 28, objectFit: 'contain' }}
+          />
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box
-            sx={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              bgcolor: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Box
-              component="img"
-              src={pick.team.logo}
-              alt={pick.team.short_name}
-              sx={{ width: 24, height: 24, objectFit: 'contain' }}
-            />
-          </Box>
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            {showName && pick.profile && (
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                {pick.profile.display_name}
-              </Typography>
-            )}
-            <Typography variant="caption" sx={{ opacity: 0.8 }}>
-              {pick.wrinkle.name}
-            </Typography>
-            <Typography variant="body2" fontWeight={600} noWrap>
-              {pick.team.short_name}
-            </Typography>
-          </Box>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="body2" fontWeight={600} noWrap>
+            {pick.team?.short_name}
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.9 }}>
+            {pick.team?.abbreviation}
+          </Typography>
+        </Box>
+
+        <Box sx={{ textAlign: 'right' }}>
           {isComplete && (
-            <Typography variant="body1" fontWeight={700}>
-              {isWinner ? `+${pick.points}` : '0'}
+            <Typography
+              variant="caption"
+              fontWeight={700}
+              sx={{
+                bgcolor: isWin ? 'success.main' : 'error.main',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+              }}
+            >
+              {isWin ? `+${pick.points}` : '0'}
             </Typography>
           )}
         </Box>
@@ -611,7 +417,79 @@ export default function MobileLayout({ children }: Props) {
     );
   };
 
-  // Group ALL league picks by user
+  const WrinklePickCard = ({ pick, showReactions = false }: { pick: WrinklePick; showReactions?: boolean }) => {
+    const isLocked = pick.game?.game_utc ? new Date(pick.game.game_utc) <= new Date() : false;
+    const isComplete = pick.status === 'FINAL';
+    const isWin = isComplete && (pick.points || 0) > 0;
+
+    return (
+      <Paper
+        elevation={2}
+        sx={{
+          p: 1.5,
+          bgcolor: pick.team?.color_primary || 'grey.800',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          border: '2px dashed rgba(255,255,255,0.5)',
+        }}
+      >
+        <Box
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            bgcolor: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Box
+            component="img"
+            src={pick.team?.logo}
+            alt={pick.team?.abbreviation}
+            sx={{ width: 28, height: 28, objectFit: 'contain' }}
+          />
+        </Box>
+
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="body2" fontWeight={600} noWrap>
+            {pick.team?.short_name}
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.9 }}>
+            {pick.wrinkle_type}
+          </Typography>
+        </Box>
+
+        <Box sx={{ textAlign: 'right' }}>
+          {isComplete && (
+            <Typography
+              variant="caption"
+              fontWeight={700}
+              sx={{
+                bgcolor: isWin ? 'success.main' : 'error.main',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+              }}
+            >
+              {isWin ? `+${pick.points}` : '0'}
+            </Typography>
+          )}
+        </Box>
+
+        {showReactions && isLocked && userId && (
+          <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+            <Reactions pickId={pick.id} currentUserId={userId} />
+          </Box>
+        )}
+      </Paper>
+    );
+  };
+
   type AllPick = (Pick & { pickType: 'regular' }) | (WrinklePick & { pickType: 'wrinkle' });
   
   const allLeaguePicksCombined: AllPick[] = [
@@ -684,59 +562,26 @@ export default function MobileLayout({ children }: Props) {
           <CircularProgress size={24} />
         ) : (
           <>
-            {/* My Picks */}
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                My Picks
-              </Typography>
-              <Chip 
-                icon={weekPicks.length >= 2 ? <Check /> : undefined}
-                label={`${weekPicks.length}/2`}
-                size="small"
-                color={weekPicks.length >= 2 ? 'success' : 'default'}
-              />
-            </Stack>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              My Picks
+            </Typography>
 
-            {weekPicks.length === 0 ? (
-              <Button 
-                variant="outlined" 
-                size="small"
-                fullWidth
-                onClick={() => router.push('/picks')}
-                sx={{ mb: 2 }}
-              >
-                Make Picks
-              </Button>
+            {weekPicks.length === 0 && wrinklePicks.length === 0 ? (
+              <Typography variant="body2" color="text.disabled">
+                No picks for this week
+              </Typography>
             ) : (
-              <Stack spacing={1} sx={{ mb: 2 }}>
-                {weekPicks.map((pick) => (
+              <Stack spacing={1} sx={{ mb: 3 }}>
+                {weekPicks.map(pick => (
                   <PickCard key={pick.id} pick={pick} />
                 ))}
-              </Stack>
-            )}
-
-            {wrinklePicks.length > 0 && (
-              <Stack spacing={1} sx={{ mb: 2 }}>
-                {wrinklePicks.map((pick) => (
+                {wrinklePicks.map(pick => (
                   <WrinklePickCard key={pick.id} pick={pick} />
                 ))}
               </Stack>
             )}
 
-            {/* Week/Season Points */}
-            <Paper variant="outlined" sx={{ p: 1.5, mb: 3 }}>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="caption" color="text.secondary">Week</Typography>
-                <Typography variant="body2" fontWeight={600}>{weekPoints} pts</Typography>
-              </Stack>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="caption" color="text.secondary">Season</Typography>
-                <Typography variant="body2" fontWeight={700}>{seasonPoints} pts</Typography>
-              </Stack>
-            </Paper>
-
-            {/* League Picks */}
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, mt: 3 }}>
               League Picks
             </Typography>
 
@@ -793,6 +638,114 @@ export default function MobileLayout({ children }: Props) {
                 </Stack>
               </Stack>
             </Paper>
+
+            {/* Playoff Teams (if playoffs active) */}
+            {isPlayoffs && playoffParticipants.length > 0 && (
+              <>
+                <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                  <EmojiEvents sx={{ fontSize: 18, color: 'warning.main' }} />
+                  Playoff Teams
+                </Typography>
+                <Stack spacing={1} sx={{ mb: 2 }}>
+                  {playoffParticipants.map((participant) => {
+                    const participantPicks = playoffPicks.filter(p => p.profile_id === participant.profile_id);
+                    const isCurrentUser = participant.profile_id === userId;
+
+                    return (
+                      <Paper 
+                        key={participant.id}
+                        elevation={isCurrentUser ? 3 : 1}
+                        sx={{ 
+                          p: 1.5, 
+                          border: 1,
+                          borderColor: isCurrentUser ? 'primary.main' : 'divider',
+                          bgcolor: isCurrentUser ? 'action.selected' : 'background.paper',
+                        }}
+                      >
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                          <Chip 
+                            label={`#${participant.seed}`} 
+                            size="small" 
+                            color={isCurrentUser ? 'primary' : 'default'}
+                            sx={{ fontWeight: 700, height: 20, '& .MuiChip-label': { px: 1, fontSize: '0.7rem' } }}
+                          />
+                          <Typography variant="body2" fontWeight={600} sx={{ flexGrow: 1 }} noWrap>
+                            {participant.profile?.display_name || participant.profile?.email?.split('@')[0]}
+                          </Typography>
+                          {isCurrentUser && (
+                            <Typography variant="caption" color="primary.main" fontWeight={600}>
+                              YOU
+                            </Typography>
+                          )}
+                        </Stack>
+
+                        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                          {participantPicks.length}/{participant.picks_available} picks
+                        </Typography>
+
+                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5 }}>
+                          {[1, 2, 3, 4].map((position) => {
+                            const pick = participantPicks.find(p => p.pick_position === position);
+                            const unlocked = isCurrentUser && !pick && isPickUnlockedForUser(participant, position);
+                            const gameLocked = pick ? isGameLocked(pick) : false;
+                            
+                            return (
+                              <Box
+                                key={position}
+                                sx={{
+                                  aspectRatio: '1',
+                                  borderRadius: 1,
+                                  bgcolor: pick 
+                                    ? (gameLocked ? 'background.paper' : '#1e3a1e')
+                                    : unlocked 
+                                      ? '#1e2a3a' 
+                                      : 'grey.800',
+                                  border: pick 
+                                    ? (gameLocked ? `1px solid ${pick.team?.color_primary}` : '1px solid #4caf50')
+                                    : unlocked
+                                      ? '2px solid #42a5f5'
+                                      : '1px solid',
+                                  borderColor: pick 
+                                    ? (gameLocked ? pick.team?.color_primary : '#4caf50')
+                                    : unlocked 
+                                      ? '#42a5f5' 
+                                      : 'grey.700',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  boxShadow: unlocked ? '0 0 8px rgba(66, 165, 245, 0.4)' : 'none',
+                                }}
+                              >
+                                {pick ? (
+                                  gameLocked ? (
+                                    <Box
+                                      component="img"
+                                      src={pick.team?.logo}
+                                      alt={pick.team?.abbreviation}
+                                      sx={{ 
+                                        width: '70%', 
+                                        height: '70%', 
+                                        objectFit: 'contain',
+                                      }}
+                                    />
+                                  ) : (
+                                    <CheckCircle sx={{ fontSize: 20, color: '#4caf50' }} />
+                                  )
+                                ) : unlocked ? (
+                                  <LockOpen sx={{ fontSize: 16, color: '#42a5f5' }} />
+                                ) : (
+                                  <Lock sx={{ fontSize: 12, color: 'grey.600' }} />
+                                )}
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </>
+            )}
 
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
               Standings
