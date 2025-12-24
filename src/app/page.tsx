@@ -151,13 +151,19 @@ export default function Home() {
                     profile_id,
                     seed,
                     picks_available,
-                    profile:profiles(display_name, email)
+                    profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
                   `)
                   .eq('playoff_round_id', roundData.id)
                   .lte('seed', 4)
                   .order('seed', { ascending: true });
 
-                setPlayoffParticipants(participantsData || []);
+                // Transform to match type (profile comes as array from Supabase)
+                const transformedParticipants = (participantsData || []).map((p: any) => ({
+                  ...p,
+                  profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+                }));
+
+                setPlayoffParticipants(transformedParticipants);
 
                 // Load all playoff picks with game data
                 const { data: picksData } = await supabase
