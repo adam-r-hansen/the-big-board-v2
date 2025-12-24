@@ -73,7 +73,6 @@ type WrinklePick = {
 };
 
 type PlayoffPick = {
-type PlayoffPick = {
   id: string;
   profile_id: string;
   team_id: string;
@@ -87,6 +86,7 @@ type PlayoffPick = {
     profile_color: string;
   };
 };
+
 type PlayoffParticipant = {
   id: string;
   profile_id: string;
