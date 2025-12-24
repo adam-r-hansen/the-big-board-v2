@@ -191,9 +191,16 @@ export default function MobileLayout({ children }: Props) {
       .eq('profile_id', user.id)
       .eq('week', weekToLoad);
 
-    setWeekPicks((picks as Pick[]) || []);
+    // Transform arrays to single objects
+    const transformedPicks = (picks || []).map((p: any) => ({
+      ...p,
+      team: Array.isArray(p.team) ? p.team[0] : p.team,
+      game: Array.isArray(p.game) ? p.game[0] : p.game,
+    }));
 
-    const weekTotal = picks?.reduce((sum, p) => sum + (p.points || 0), 0) || 0;
+    setWeekPicks(transformedPicks);
+
+    const weekTotal = transformedPicks.reduce((sum, p) => sum + (p.points || 0), 0);
     setWeekPoints(weekTotal);
 
     // Load league picks
@@ -209,7 +216,14 @@ export default function MobileLayout({ children }: Props) {
       .eq('week', weekToLoad)
       .neq('profile_id', user.id);
 
-    setLeaguePicks((allPicks as Pick[]) || []);
+    const transformedLeaguePicks = (allPicks || []).map((p: any) => ({
+      ...p,
+      team: Array.isArray(p.team) ? p.team[0] : p.team,
+      game: Array.isArray(p.game) ? p.game[0] : p.game,
+      profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+    }));
+
+    setLeaguePicks(transformedLeaguePicks);
 
     // Load wrinkle picks
     const { data: myWrinkles } = await supabase
@@ -223,9 +237,13 @@ export default function MobileLayout({ children }: Props) {
       .eq('profile_id', user.id)
       .eq('week', weekToLoad);
 
-    setWrinklePicks((myWrinkles as WrinklePick[]) || []);
+    const transformedWrinkles = (myWrinkles || []).map((p: any) => ({
+      ...p,
+      team: Array.isArray(p.team) ? p.team[0] : p.team,
+      game: Array.isArray(p.game) ? p.game[0] : p.game,
+    }));
 
-    const wrinkleTotal = myWrinkles?.reduce((sum, p) => sum + (p.points || 0), 0) || 0;
+    setWrinklePicks(transformedWrinkles);
 
     // Load league wrinkle picks
     const { data: allWrinkles } = await supabase
@@ -240,7 +258,14 @@ export default function MobileLayout({ children }: Props) {
       .eq('week', weekToLoad)
       .neq('profile_id', user.id);
 
-    setLeagueWrinklePicks((allWrinkles as WrinklePick[]) || []);
+    const transformedLeagueWrinkles = (allWrinkles || []).map((p: any) => ({
+      ...p,
+      team: Array.isArray(p.team) ? p.team[0] : p.team,
+      game: Array.isArray(p.game) ? p.game[0] : p.game,
+      profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+    }));
+
+    setLeagueWrinklePicks(transformedLeagueWrinkles);
 
     // Load season total
     const { data: standings } = await supabase
@@ -301,13 +326,13 @@ export default function MobileLayout({ children }: Props) {
           `)
           .eq('playoff_round_id', roundData.id);
 
-        const transformedPicks = (picksData || []).map((p: any) => ({
+        const transformedPlayoffPicks = (picksData || []).map((p: any) => ({
           ...p,
           team: Array.isArray(p.team) ? p.team[0] : p.team,
           game: Array.isArray(p.game) ? p.game[0] : p.game,
         }));
 
-        setPlayoffPicks(transformedPicks);
+        setPlayoffPicks(transformedPlayoffPicks);
       }
     }
 
@@ -528,7 +553,7 @@ export default function MobileLayout({ children }: Props) {
           open={Boolean(weekMenuAnchor)}
           onClose={() => setWeekMenuAnchor(null)}
         >
-          {Array.from({ length: 18 }, (_, i) => i + 1).map((week) => (
+          {Array.from({ length, 18 }, (_, i) => i + 1).map((week) => (
             <MenuItem
               key={week}
               onClick={() => handleWeekSelect(week)}
