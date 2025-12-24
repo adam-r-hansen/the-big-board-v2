@@ -41,6 +41,7 @@ type Team = {
 type Game = {
   id: string;
   game_utc: string;
+  status: string;
 };
 
 type Pick = {
@@ -79,6 +80,10 @@ type PlayoffPick = {
   game_id: string;
   team?: Team;
   game?: Game;
+  profile?: {
+    display_name: string;
+    profile_color: string;
+  };
 };
 
 type PlayoffParticipant = {
@@ -132,9 +137,11 @@ export default function MobileLayout({ children }: Props) {
   const [weekMenuAnchor, setWeekMenuAnchor] = useState<null | HTMLElement>(null);
   
   // Playoff state
-  const [isPlayoffs, setIsPlayoffs] = useState(false);
+  const [playoffsEnabled, setPlayoffsEnabled] = useState(false);
+  const [isPlayoffWeek, setIsPlayoffWeek] = useState(false);
   const [playoffParticipants, setPlayoffParticipants] = useState<PlayoffParticipant[]>([]);
-  const [playoffPicks, setPlayoffPicks] = useState<PlayoffPick[]>([]);
+  const [myPlayoffPicks, setMyPlayoffPicks] = useState<PlayoffPick[]>([]);
+  const [leaguePlayoffPicks, setLeaguePlayoffPicks] = useState<PlayoffPick[]>([]);
   const [draftStartTime, setDraftStartTime] = useState<Date | null>(null);
   const [roundType, setRoundType] = useState<'semifinal' | 'championship'>('semifinal');
   const [playoffWeek, setPlayoffWeek] = useState<number>(17);
@@ -165,9 +172,19 @@ export default function MobileLayout({ children }: Props) {
     const weekToLoad = week !== undefined ? week : actualCurrentWeek;
     setViewingWeek(weekToLoad);
 
-    // Check if we're in playoffs
-    const playoffsActive = weekToLoad >= 17;
-    setIsPlayoffs(playoffsActive);
+    // Check if playoffs are enabled for this league
+    const { data: leagueSeason } = await supabase
+      .from('league_seasons_v2')
+      .select('playoffs_enabled')
+      .eq('id', leagueId)
+      .single();
+
+    const playoffsEnabledForLeague = leagueSeason?.playoffs_enabled || false;
+    setPlayoffsEnabled(playoffsEnabledForLeague);
+
+    // Check if we're in a playoff week AND playoffs are enabled
+    const isPlayoffs = weekToLoad >= 17 && playoffsEnabledForLeague;
+    setIsPlayoffWeek(isPlayoffs);
 
     // Check if ANY games for the week have started (locked)
     const { data: lockedGames } = await supabase
@@ -179,106 +196,8 @@ export default function MobileLayout({ children }: Props) {
     
     setAnyGamesLocked(!!lockedGames && lockedGames.length > 0);
 
-    // Load regular picks
-    const { data: picks } = await supabase
-      .from('picks_v2')
-      .select(`
-        id, team_id, week, points, status,
-        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
-        game:games(status, game_utc)
-      `)
-      .eq('league_season_id', leagueId)
-      .eq('profile_id', user.id)
-      .eq('week', weekToLoad);
-
-    // Transform arrays to single objects
-    const transformedPicks = (picks || []).map((p: any) => ({
-      ...p,
-      team: Array.isArray(p.team) ? p.team[0] : p.team,
-      game: Array.isArray(p.game) ? p.game[0] : p.game,
-    }));
-
-    setWeekPicks(transformedPicks);
-
-    const weekTotal = transformedPicks.reduce((sum, p) => sum + (p.points || 0), 0);
-    setWeekPoints(weekTotal);
-
-    // Load league picks
-    const { data: allPicks } = await supabase
-      .from('picks_v2')
-      .select(`
-        id, team_id, week, points, status, profile_id,
-        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
-        game:games(status, game_utc),
-        profile:profiles(display_name, profile_color)
-      `)
-      .eq('league_season_id', leagueId)
-      .eq('week', weekToLoad)
-      .neq('profile_id', user.id);
-
-    const transformedLeaguePicks = (allPicks || []).map((p: any) => ({
-      ...p,
-      team: Array.isArray(p.team) ? p.team[0] : p.team,
-      game: Array.isArray(p.game) ? p.game[0] : p.game,
-      profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
-    }));
-
-    setLeaguePicks(transformedLeaguePicks);
-
-    // Load wrinkle picks
-    const { data: myWrinkles } = await supabase
-      .from('wrinkle_picks_v2')
-      .select(`
-        id, team_id, wrinkle_type, points, status,
-        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
-        game:games(status, game_utc)
-      `)
-      .eq('league_season_id', leagueId)
-      .eq('profile_id', user.id)
-      .eq('week', weekToLoad);
-
-    const transformedWrinkles = (myWrinkles || []).map((p: any) => ({
-      ...p,
-      team: Array.isArray(p.team) ? p.team[0] : p.team,
-      game: Array.isArray(p.game) ? p.game[0] : p.game,
-    }));
-
-    setWrinklePicks(transformedWrinkles);
-
-    // Load league wrinkle picks
-    const { data: allWrinkles } = await supabase
-      .from('wrinkle_picks_v2')
-      .select(`
-        id, team_id, wrinkle_type, points, status, profile_id,
-        team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
-        game:games(status, game_utc),
-        profile:profiles(display_name, profile_color)
-      `)
-      .eq('league_season_id', leagueId)
-      .eq('week', weekToLoad)
-      .neq('profile_id', user.id);
-
-    const transformedLeagueWrinkles = (allWrinkles || []).map((p: any) => ({
-      ...p,
-      team: Array.isArray(p.team) ? p.team[0] : p.team,
-      game: Array.isArray(p.game) ? p.game[0] : p.game,
-      profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
-    }));
-
-    setLeagueWrinklePicks(transformedLeagueWrinkles);
-
-    // Load season total
-    const { data: standings } = await supabase
-      .from('standings_v2')
-      .select('total_points')
-      .eq('league_season_id', leagueId)
-      .eq('profile_id', user.id)
-      .single();
-
-    setSeasonPoints(standings?.total_points || 0);
-
-    // Load playoff data if in playoffs
-    if (playoffsActive) {
+    if (isPlayoffs) {
+      // Load playoff picks instead of regular picks
       const { data: roundData } = await supabase
         .from('playoff_rounds_v2')
         .select('id, draft_start_time, round_type, week')
@@ -293,6 +212,59 @@ export default function MobileLayout({ children }: Props) {
         setDraftStartTime(roundData.draft_start_time ? new Date(roundData.draft_start_time) : null);
         setRoundType(roundData.round_type as 'semifinal' | 'championship');
 
+        // Load my playoff picks
+        const { data: myPicksData } = await supabase
+          .from('playoff_picks_v2')
+          .select(`
+            id,
+            profile_id,
+            team_id,
+            pick_position,
+            game_id,
+            team:teams(id, name, short_name, abbreviation, color_primary, logo),
+            game:games(id, game_utc, status)
+          `)
+          .eq('playoff_round_id', roundData.id)
+          .eq('profile_id', user.id);
+
+        const transformedMyPicks = (myPicksData || []).map((p: any) => ({
+          ...p,
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: Array.isArray(p.game) ? p.game[0] : p.game,
+        }));
+
+        setMyPlayoffPicks(transformedMyPicks);
+
+        // Calculate points from playoff picks
+        const playoffPoints = transformedMyPicks.reduce((sum, p) => sum + (p.points || 0), 0);
+        setWeekPoints(playoffPoints);
+
+        // Load league playoff picks
+        const { data: leaguePicksData } = await supabase
+          .from('playoff_picks_v2')
+          .select(`
+            id,
+            profile_id,
+            team_id,
+            pick_position,
+            game_id,
+            team:teams(id, name, short_name, abbreviation, color_primary, logo),
+            game:games(id, game_utc, status),
+            profile:profiles(display_name, profile_color)
+          `)
+          .eq('playoff_round_id', roundData.id)
+          .neq('profile_id', user.id);
+
+        const transformedLeaguePicks = (leaguePicksData || []).map((p: any) => ({
+          ...p,
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: Array.isArray(p.game) ? p.game[0] : p.game,
+          profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        }));
+
+        setLeaguePlayoffPicks(transformedLeaguePicks);
+
+        // Load playoff participants for LEAGUE tab
         const { data: participantsData } = await supabase
           .from('playoff_participants_v2')
           .select(`
@@ -312,29 +284,116 @@ export default function MobileLayout({ children }: Props) {
         }));
 
         setPlayoffParticipants(transformedParticipants);
-
-        const { data: picksData } = await supabase
-          .from('playoff_picks_v2')
-          .select(`
-            id,
-            profile_id,
-            team_id,
-            pick_position,
-            game_id,
-            team:teams(id, name, short_name, abbreviation, color_primary, logo),
-            game:games(id, game_utc)
-          `)
-          .eq('playoff_round_id', roundData.id);
-
-        const transformedPlayoffPicks = (picksData || []).map((p: any) => ({
-          ...p,
-          team: Array.isArray(p.team) ? p.team[0] : p.team,
-          game: Array.isArray(p.game) ? p.game[0] : p.game,
-        }));
-
-        setPlayoffPicks(transformedPlayoffPicks);
       }
+
+      // Clear regular picks
+      setWeekPicks([]);
+      setLeaguePicks([]);
+      setWrinklePicks([]);
+      setLeagueWrinklePicks([]);
+    } else {
+      // Load regular picks
+      const { data: picks } = await supabase
+        .from('picks_v2')
+        .select(`
+          id, team_id, week, points, status,
+          team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+          game:games(status, game_utc)
+        `)
+        .eq('league_season_id', leagueId)
+        .eq('profile_id', user.id)
+        .eq('week', weekToLoad);
+
+      const transformedPicks = (picks || []).map((p: any) => ({
+        ...p,
+        team: Array.isArray(p.team) ? p.team[0] : p.team,
+        game: Array.isArray(p.game) ? p.game[0] : p.game,
+      }));
+
+      setWeekPicks(transformedPicks);
+
+      const weekTotal = transformedPicks.reduce((sum, p) => sum + (p.points || 0), 0);
+      setWeekPoints(weekTotal);
+
+      // Load league picks
+      const { data: allPicks } = await supabase
+        .from('picks_v2')
+        .select(`
+          id, team_id, week, points, status, profile_id,
+          team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+          game:games(status, game_utc),
+          profile:profiles(display_name, profile_color)
+        `)
+        .eq('league_season_id', leagueId)
+        .eq('week', weekToLoad)
+        .neq('profile_id', user.id);
+
+      const transformedLeaguePicks = (allPicks || []).map((p: any) => ({
+        ...p,
+        team: Array.isArray(p.team) ? p.team[0] : p.team,
+        game: Array.isArray(p.game) ? p.game[0] : p.game,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+      }));
+
+      setLeaguePicks(transformedLeaguePicks);
+
+      // Load wrinkle picks
+      const { data: myWrinkles } = await supabase
+        .from('wrinkle_picks_v2')
+        .select(`
+          id, team_id, wrinkle_type, points, status,
+          team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+          game:games(status, game_utc)
+        `)
+        .eq('league_season_id', leagueId)
+        .eq('profile_id', user.id)
+        .eq('week', weekToLoad);
+
+      const transformedWrinkles = (myWrinkles || []).map((p: any) => ({
+        ...p,
+        team: Array.isArray(p.team) ? p.team[0] : p.team,
+        game: Array.isArray(p.game) ? p.game[0] : p.game,
+      }));
+
+      setWrinklePicks(transformedWrinkles);
+
+      // Load league wrinkle picks
+      const { data: allWrinkles } = await supabase
+        .from('wrinkle_picks_v2')
+        .select(`
+          id, team_id, wrinkle_type, points, status, profile_id,
+          team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
+          game:games(status, game_utc),
+          profile:profiles(display_name, profile_color)
+        `)
+        .eq('league_season_id', leagueId)
+        .eq('week', weekToLoad)
+        .neq('profile_id', user.id);
+
+      const transformedLeagueWrinkles = (allWrinkles || []).map((p: any) => ({
+        ...p,
+        team: Array.isArray(p.team) ? p.team[0] : p.team,
+        game: Array.isArray(p.game) ? p.game[0] : p.game,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+      }));
+
+      setLeagueWrinklePicks(transformedLeagueWrinkles);
+
+      // Clear playoff picks
+      setMyPlayoffPicks([]);
+      setLeaguePlayoffPicks([]);
+      setPlayoffParticipants([]);
     }
+
+    // Load season total
+    const { data: standings } = await supabase
+      .from('standings_v2')
+      .select('total_points')
+      .eq('league_season_id', leagueId)
+      .eq('profile_id', user.id)
+      .single();
+
+    setSeasonPoints(standings?.total_points || 0);
 
     setLoading(false);
   }, [supabase, now]);
@@ -434,6 +493,72 @@ export default function MobileLayout({ children }: Props) {
     );
   };
 
+  const PlayoffPickCard = ({ pick }: { pick: PlayoffPick }) => {
+    const gameLocked = isGameLocked(pick);
+    const isComplete = pick.game?.status === 'FINAL';
+    const isWin = isComplete && (pick.points || 0) > 0;
+
+    return (
+      <Paper
+        elevation={2}
+        sx={{
+          p: 1.5,
+          bgcolor: pick.team?.color_primary || 'grey.800',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+        }}
+      >
+        <Box
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            bgcolor: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Box
+            component="img"
+            src={pick.team?.logo}
+            alt={pick.team?.abbreviation}
+            sx={{ width: 28, height: 28, objectFit: 'contain' }}
+          />
+        </Box>
+
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="body2" fontWeight={600} noWrap>
+            {pick.team?.short_name}
+          </Typography>
+          <Typography variant="caption" sx={{ opacity: 0.9 }}>
+            Pick #{pick.pick_position}
+          </Typography>
+        </Box>
+
+        <Box sx={{ textAlign: 'right' }}>
+          {isComplete && (
+            <Typography
+              variant="caption"
+              fontWeight={700}
+              sx={{
+                bgcolor: isWin ? 'success.main' : 'error.main',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+              }}
+            >
+              {isWin ? `+${pick.points}` : '0'}
+            </Typography>
+          )}
+        </Box>
+      </Paper>
+    );
+  };
+
   const WrinklePickCard = ({ pick }: { pick: WrinklePick }) => {
     const isComplete = pick.status === 'FINAL';
     const isWin = isComplete && (pick.points || 0) > 0;
@@ -500,12 +625,17 @@ export default function MobileLayout({ children }: Props) {
     );
   };
 
-  type AllPick = (Pick & { pickType: 'regular' }) | (WrinklePick & { pickType: 'wrinkle' });
+  // Combine all league picks
+  type AllPick = (Pick & { pickType: 'regular' }) | (WrinklePick & { pickType: 'wrinkle' }) | (PlayoffPick & { pickType: 'playoff' });
   
-  const allLeaguePicksCombined: AllPick[] = [
-    ...leaguePicks.map(p => ({ ...p, pickType: 'regular' as const })),
-    ...leagueWrinklePicks.map(p => ({ ...p, pickType: 'wrinkle' as const })),
-  ];
+  const allLeaguePicksCombined: AllPick[] = isPlayoffWeek 
+    ? [
+        ...leaguePlayoffPicks.map(p => ({ ...p, pickType: 'playoff' as const })),
+      ]
+    : [
+        ...leaguePicks.map(p => ({ ...p, pickType: 'regular' as const })),
+        ...leagueWrinklePicks.map(p => ({ ...p, pickType: 'wrinkle' as const })),
+      ];
 
   const groupedLeaguePicks = allLeaguePicksCombined.reduce((acc, pick) => {
     const name = pick.profile?.display_name || 'Unknown';
@@ -543,7 +673,7 @@ export default function MobileLayout({ children }: Props) {
           }}
         >
           <Typography variant="h6" fontWeight={700}>
-            Week {viewingWeek}
+            Week {viewingWeek} {isPlayoffWeek && '(Playoffs)'}
           </Typography>
           <ExpandMore />
         </Box>
@@ -573,26 +703,40 @@ export default function MobileLayout({ children }: Props) {
         ) : (
           <>
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-              My Picks
+              {isPlayoffWeek ? 'My Playoff Picks' : 'My Picks'}
             </Typography>
 
-            {weekPicks.length === 0 && wrinklePicks.length === 0 ? (
-              <Typography variant="body2" color="text.disabled">
-                No picks for this week
-              </Typography>
+            {isPlayoffWeek ? (
+              myPlayoffPicks.length === 0 ? (
+                <Typography variant="body2" color="text.disabled">
+                  No playoff picks yet
+                </Typography>
+              ) : (
+                <Stack spacing={1} sx={{ mb: 3 }}>
+                  {myPlayoffPicks.map(pick => (
+                    <PlayoffPickCard key={pick.id} pick={pick} />
+                  ))}
+                </Stack>
+              )
             ) : (
-              <Stack spacing={1} sx={{ mb: 3 }}>
-                {weekPicks.map(pick => (
-                  <PickCard key={pick.id} pick={pick} />
-                ))}
-                {wrinklePicks.map(pick => (
-                  <WrinklePickCard key={pick.id} pick={pick} />
-                ))}
-              </Stack>
+              weekPicks.length === 0 && wrinklePicks.length === 0 ? (
+                <Typography variant="body2" color="text.disabled">
+                  No picks for this week
+                </Typography>
+              ) : (
+                <Stack spacing={1} sx={{ mb: 3 }}>
+                  {weekPicks.map(pick => (
+                    <PickCard key={pick.id} pick={pick} />
+                  ))}
+                  {wrinklePicks.map(pick => (
+                    <WrinklePickCard key={pick.id} pick={pick} />
+                  ))}
+                </Stack>
+              )
             )}
 
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, mt: 3 }}>
-              League Picks
+              {isPlayoffWeek ? 'League Playoff Picks' : 'League Picks'}
             </Typography>
 
             {!anyGamesLocked ? (
@@ -612,7 +756,9 @@ export default function MobileLayout({ children }: Props) {
                     </Typography>
                     <Stack spacing={0.5}>
                       {picks.map((pick) => 
-                        pick.pickType === 'regular' ? (
+                        pick.pickType === 'playoff' ? (
+                          <PlayoffPickCard key={`playoff-${pick.id}`} pick={pick} />
+                        ) : pick.pickType === 'regular' ? (
                           <PickCard key={`regular-${pick.id}`} pick={pick} />
                         ) : (
                           <WrinklePickCard key={`wrinkle-${pick.id}`} pick={pick} />
@@ -650,7 +796,7 @@ export default function MobileLayout({ children }: Props) {
             </Paper>
 
             {/* Playoff Teams (if playoffs active) */}
-            {isPlayoffs && playoffParticipants.length > 0 && (
+            {isPlayoffWeek && playoffParticipants.length > 0 && (
               <>
                 <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
                   <EmojiEvents sx={{ fontSize: 18, color: 'warning.main' }} />
@@ -658,7 +804,9 @@ export default function MobileLayout({ children }: Props) {
                 </Typography>
                 <Stack spacing={1} sx={{ mb: 2 }}>
                   {playoffParticipants.map((participant) => {
-                    const participantPicks = playoffPicks.filter(p => p.profile_id === participant.profile_id);
+                    const participantPicks = isPlayoffWeek 
+                      ? [...myPlayoffPicks, ...leaguePlayoffPicks].filter(p => p.profile_id === participant.profile_id)
+                      : [];
                     const isCurrentUser = participant.profile_id === userId;
 
                     return (
