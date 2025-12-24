@@ -179,7 +179,14 @@ export default function Home() {
                   `)
                   .eq('playoff_round_id', roundData.id);
 
-                setPlayoffPicks(picksData || []);
+                // Transform to match type (team and game come as arrays from Supabase)
+                const transformedPicks = (picksData || []).map((p: any) => ({
+                  ...p,
+                  team: Array.isArray(p.team) ? p.team[0] : p.team,
+                  game: Array.isArray(p.game) ? p.game[0] : p.game,
+                }));
+
+                setPlayoffPicks(transformedPicks);
               }
             }
 
