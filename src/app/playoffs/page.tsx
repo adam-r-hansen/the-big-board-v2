@@ -5,15 +5,13 @@ import {
   Container, 
   Box, 
   Typography, 
-  Stack, 
   CircularProgress, 
   Alert,
-  Paper,
   Chip,
-  useMediaQuery,
-  useTheme,
+  Stack,
+  Paper,
 } from '@mui/material';
-import { EmojiEvents, Lock, Timer, CheckCircle } from '@mui/icons-material';
+import { EmojiEvents, Timer, CheckCircle } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
 import { createClient } from '@/lib/supabase/client';
@@ -71,9 +69,6 @@ type Round = {
 };
 
 export default function PlayoffsPage() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -251,7 +246,8 @@ export default function PlayoffsPage() {
 
   return (
     <AppShell>
-      <Container maxWidth="xl" sx={{ py: 3 }}>
+      {/* Main content - will be wrapped in DesktopLayout/MobileLayout by AppShell */}
+      <Box sx={{ py: 3 }}>
         {/* Header */}
         <Box sx={{ mb: 3 }}>
           <Stack direction="row" alignItems="center" spacing={2}>
@@ -344,29 +340,6 @@ export default function PlayoffsPage() {
                 <Typography variant="caption" color="text.secondary">
                   {allPicks.filter(pick => pick.profile_id === p.profile_id).length}/{p.picks_available} picks
                 </Typography>
-                <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
-                  {[1, 2, 3, 4].map((pos) => {
-                    const hasPick = allPicks.some(
-                      pick => pick.profile_id === p.profile_id && pick.pick_position === pos
-                    );
-                    return (
-                      <Box
-                        key={pos}
-                        sx={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '50%',
-                          bgcolor: hasPick ? 'success.main' : 'grey.300',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        {!hasPick && <Lock sx={{ fontSize: 14, color: 'grey.600' }} />}
-                      </Box>
-                    );
-                  })}
-                </Stack>
               </Paper>
             ))}
           </Stack>
@@ -394,7 +367,7 @@ export default function PlayoffsPage() {
             );
           })}
         </Stack>
-      </Container>
+      </Box>
     </AppShell>
   );
 }
