@@ -1,8 +1,16 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Check for secret token
+    const authHeader = request.headers.get('authorization');
+    const secretToken = process.env.STANDINGS_UPDATE_SECRET;
+
+    if (!authHeader || !secretToken || authHeader !== `Bearer ${secretToken}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const supabase = await createClient();
 
     // Get all active league seasons
