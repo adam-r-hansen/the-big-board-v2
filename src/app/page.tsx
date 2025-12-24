@@ -26,11 +26,12 @@ export default function Home() {
   const [activeLeague, setActiveLeague] = useState<LeagueInfo | null>(null);
   
   // Dashboard stats
-  const [currentWeek, setCurrentWeek] = useState(14);
+  const [currentWeek, setCurrentWeek] = useState(17);
   const [userRank, setUserRank] = useState<number | null>(null);
   const [totalMembers, setTotalMembers] = useState(1);
   const [teamsRemaining, setTeamsRemaining] = useState(32);
   const [seasonPoints, setSeasonPoints] = useState(0);
+  const [isPlayoffs, setIsPlayoffs] = useState(false);
 
   const supabase = createClient();
 
@@ -73,7 +74,23 @@ export default function Home() {
             setActiveLeague(active);
             localStorage.setItem('activeLeagueSeasonId', active.id);
 
+            // Check if we're in playoffs (Week 17+)
+            const { data: games } = await supabase
+              .from('games')
+              .select('week')
+              .eq('season', active.season)
+              .order('week', { ascending: false })
+              .limit(1);
+
+            const latestWeek = games?.[0]?.week || 17;
+            setCurrentWeek(latestWeek);
+            const playoffsActive = latestWeek >= 17;
+            setIsPlayoffs(playoffsActive);
+
             // Load stats for active league
+            // Use regular season stats (through Week 16) if we're in playoffs
+            const statsWeek = playoffsActive ? 16 : latestWeek;
+            
             const { data: standings } = await supabase
               .from('standings_v2')
               .select('*')
@@ -87,24 +104,13 @@ export default function Home() {
               setTotalMembers(standings.length);
             }
 
-            // Get current week
-            const { data: games } = await supabase
-              .from('games')
-              .select('week')
-              .eq('season', active.season)
-              .order('week', { ascending: false })
-              .limit(1);
-
-            if (games && games.length > 0) {
-              setCurrentWeek(games[0].week);
-            }
-
-            // Get teams remaining
+            // Get teams remaining (through regular season only)
             const { data: picks } = await supabase
               .from('picks_v2')
-              .select('team_id')
+              .select('team_id, week')
               .eq('profile_id', user.id)
-              .eq('league_season_id', active.id);
+              .eq('league_season_id', active.id)
+              .lte('week', 16); // Only count regular season picks
 
             const usedTeams = new Set(picks?.map((p: any) => p.team_id) || []);
             setTeamsRemaining(32 - usedTeams.size);
@@ -134,8 +140,9 @@ export default function Home() {
     );
   }
 
-  const weeksRemaining = 18 - currentWeek;
-  const progressPercent = (currentWeek / 18) * 100;
+  const regularSeasonWeeks = 16;
+  const weeksRemaining = Math.max(0, regularSeasonWeeks - currentWeek);
+  const progressPercent = Math.min(100, (currentWeek / regularSeasonWeeks) * 100);
 
   return (
     <AppShell 
@@ -157,13 +164,16 @@ export default function Home() {
             sx={{ height: 10, borderRadius: 5, mb: 2 }}
           />
           <Typography variant="body2" color="text.secondary">
-            {weeksRemaining} weeks remaining in regular season
+            {isPlayoffs 
+              ? 'Regular season complete • Playoffs underway' 
+              : `${weeksRemaining} weeks remaining in regular season`
+            }
           </Typography>
         </Paper>
 
         {/* Your Stats */}
         <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
-          Your Stats
+          {isPlayoffs ? 'Final Regular Season Stats' : 'Your Stats'}
         </Typography>
         
         <Box sx={{ 
@@ -178,7 +188,7 @@ export default function Home() {
               #{userRank || '—'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Current Rank
+              {isPlayoffs ? 'Final Rank' : 'Current Rank'}
             </Typography>
           </Paper>
 
@@ -188,7 +198,7 @@ export default function Home() {
               {seasonPoints}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Season Points
+              {isPlayoffs ? 'Total Points' : 'Season Points'}
             </Typography>
           </Paper>
 
@@ -208,7 +218,7 @@ export default function Home() {
               {teamsRemaining}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Teams Left
+              Teams {isPlayoffs ? 'Remaining' : 'Left'}
             </Typography>
           </Paper>
         </Box>
