@@ -11,11 +11,11 @@ import {
   Stack,
   Paper,
 } from '@mui/material';
-import { EmojiEvents, Timer, CheckCircle } from '@mui/icons-material';
+import { EmojiEvents, Timer, CheckCircle, Lock, LockOpen } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
 import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
 import { createClient } from '@/lib/supabase/client';
-import { generateUnlockSchedule, isDraftComplete, getNextUnlockForSeed, getTimeUntilUnlock, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
+import { generateUnlockSchedule, isDraftComplete, getNextUnlockForSeed, getTimeUntilUnlock, isPickUnlocked, type UnlockWindow } from '@/lib/playoffs/unlockSchedule';
 
 type Team = {
   id: string;
@@ -47,7 +47,7 @@ type PlayoffPick = {
   team_id: string;
   pick_position: number;
   team?: Team;
-  game?: Team;
+  game?: Game;
 };
 
 type Participant = {
@@ -81,6 +81,7 @@ export default function PlayoffsPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [schedule, setSchedule] = useState<UnlockWindow[]>([]);
   const [now, setNow] = useState(new Date());
+  const [userId, setUserId] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -93,6 +94,7 @@ export default function PlayoffsPage() {
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setUserId(user.id);
 
       const leagueSeasonId = localStorage.getItem('activeLeagueSeasonId');
       if (!leagueSeasonId) {
@@ -129,28 +131,57 @@ export default function PlayoffsPage() {
 
       const { data: participantData } = await supabase
         .from('playoff_participants_v2')
-        .select('*')
+        .select('*, profile:profiles(display_name, email)')
         .eq('playoff_round_id', roundData.id)
         .eq('profile_id', user.id)
         .single();
 
-      setParticipant(participantData);
+      // Transform profile array to single object
+      const transformedParticipant = participantData ? {
+        ...participantData,
+        profile: Array.isArray(participantData.profile) ? participantData.profile[0] : participantData.profile
+      } : null;
+
+      setParticipant(transformedParticipant);
 
       const { data: allParticipantsData } = await supabase
         .from('playoff_participants_v2')
         .select(`*, profile:profiles(display_name, email)`)
         .eq('playoff_round_id', roundData.id)
+        .lte('seed', 4)
         .order('seed', { ascending: true });
 
-      setAllParticipants(allParticipantsData || []);
+      // Transform all participants
+      const transformedParticipants = (allParticipantsData || []).map(p => ({
+        ...p,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+      }));
+
+      setAllParticipants(transformedParticipants);
 
       const { data: picksData } = await supabase
         .from('playoff_picks_v2')
-        .select(`*, team:teams(id, name, short_name, abbreviation, color_primary, logo)`)
+        .select(`
+          id,
+          playoff_round_id,
+          profile_id,
+          game_id,
+          team_id,
+          pick_position,
+          team:teams(id, name, short_name, abbreviation, color_primary, logo),
+          game:games(id, game_utc)
+        `)
         .eq('playoff_round_id', roundData.id);
 
-      setAllPicks(picksData || []);
-      setMyPicks((picksData || []).filter(p => p.profile_id === user.id));
+      // Transform picks
+      const transformedPicks = (picksData || []).map((p: any) => ({
+        ...p,
+        team: Array.isArray(p.team) ? p.team[0] : p.team,
+        game: Array.isArray(p.game) ? p.game[0] : p.game,
+      }));
+
+      setAllPicks(transformedPicks);
+      setMyPicks(transformedPicks.filter(p => p.profile_id === user.id));
 
       const { data: gamesData } = await supabase
         .from('games')
@@ -192,17 +223,46 @@ export default function PlayoffsPage() {
       } else {
         const { data: picksData } = await supabase
           .from('playoff_picks_v2')
-          .select(`*, team:teams(id, name, short_name, abbreviation, color_primary, logo)`)
+          .select(`
+            id,
+            playoff_round_id,
+            profile_id,
+            game_id,
+            team_id,
+            pick_position,
+            team:teams(id, name, short_name, abbreviation, color_primary, logo),
+            game:games(id, game_utc)
+          `)
           .eq('playoff_round_id', round.id);
 
-        setAllPicks(picksData || []);
-        setMyPicks((picksData || []).filter(p => p.profile_id === participant.profile_id));
+        const transformedPicks = (picksData || []).map((p: any) => ({
+          ...p,
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: Array.isArray(p.game) ? p.game[0] : p.game,
+        }));
+
+        setAllPicks(transformedPicks);
+        setMyPicks(transformedPicks.filter(p => p.profile_id === participant.profile_id));
       }
     } catch {
       setError('Network error');
     }
 
     setSaving(false);
+  };
+
+  // Check if a pick is unlocked for a user
+  const isPickUnlockedForUser = (participantObj: Participant, pickPosition: number): boolean => {
+    if (!round || !schedule.length) return false;
+    const draftComplete = isDraftComplete(schedule, now);
+    if (draftComplete) return true;
+    return isPickUnlocked(schedule, participantObj.seed, pickPosition, now);
+  };
+
+  // Check if game has started/locked
+  const isGameLocked = (pick: PlayoffPick): boolean => {
+    if (!pick.game?.game_utc) return false;
+    return new Date(pick.game.game_utc) <= now;
   };
 
   if (loading) {
@@ -316,34 +376,128 @@ export default function PlayoffsPage() {
           </Alert>
         )}
 
-        {/* Playoff Teams */}
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Playoff Teams
-          </Typography>
-          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
-            {allParticipants.filter(p => p.seed <= 4).map((p) => (
-              <Paper
-                key={p.id}
-                elevation={participant?.id === p.id ? 3 : 1}
-                sx={{
-                  p: 2,
+        {/* Playoff Teams with Pick Boxes */}
+        <Typography variant="h5" gutterBottom sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EmojiEvents sx={{ color: 'warning.main' }} />
+          Playoff Teams
+        </Typography>
+        <Box sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
+          gap: 2,
+          mb: 4
+        }}>
+          {allParticipants.map((participantObj) => {
+            const participantPicks = allPicks.filter(p => p.profile_id === participantObj.profile_id);
+            const isCurrentUser = participantObj.profile_id === userId;
+
+            return (
+              <Paper 
+                key={participantObj.id}
+                elevation={isCurrentUser ? 4 : 2}
+                sx={{ 
+                  p: 2, 
                   border: 2,
-                  borderColor: participant?.id === p.id ? 'primary.main' : 'divider',
-                  minWidth: 200,
-                  mb: 2,
+                  borderColor: isCurrentUser ? 'primary.main' : 'divider',
+                  background: isCurrentUser ? 'linear-gradient(135deg, rgba(25, 118, 210, 0.1) 0%, rgba(66, 165, 245, 0.05) 100%)' : 'background.paper',
                 }}
               >
-                <Typography variant="subtitle2" fontWeight={700}>
-                  #{p.seed} {p.profile?.display_name || p.profile?.email}
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <Chip 
+                    label={`#${participantObj.seed}`} 
+                    size="small" 
+                    color={isCurrentUser ? 'primary' : 'default'}
+                    sx={{ fontWeight: 700 }}
+                  />
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ flexGrow: 1 }} noWrap>
+                    {participantObj.profile?.display_name || participantObj.profile?.email?.split('@')[0]}
+                  </Typography>
+                  {isCurrentUser && (
+                    <Typography variant="caption" color="primary.main" fontWeight={600}>
+                      YOU
+                    </Typography>
+                  )}
+                </Stack>
+
+                {/* Pick Progress */}
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  {participantPicks.length}/{participantObj.picks_available} picks made
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {allPicks.filter(pick => pick.profile_id === p.profile_id).length}/{p.picks_available} picks
-                </Typography>
+
+                {/* Picks Grid */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5 }}>
+                  {[1, 2, 3, 4].map((position) => {
+                    const pick = participantPicks.find(p => p.pick_position === position);
+                    const unlocked = isCurrentUser && !pick && isPickUnlockedForUser(participantObj, position);
+                    const gameLocked = pick ? isGameLocked(pick) : false;
+                    
+                    return (
+                      <Box
+                        key={position}
+                        sx={{
+                          aspectRatio: '1',
+                          borderRadius: 1,
+                          bgcolor: pick 
+                            ? (gameLocked ? 'background.paper' : '#1e3a1e')
+                            : unlocked 
+                              ? '#1e2a3a' 
+                              : 'grey.800',
+                          border: pick 
+                            ? (gameLocked ? `1px solid ${pick.team?.color_primary}` : '1px solid #4caf50')
+                            : unlocked
+                              ? '2px solid #42a5f5'
+                              : '1px solid',
+                          borderColor: pick 
+                            ? (gameLocked ? pick.team?.color_primary : '#4caf50')
+                            : unlocked 
+                              ? '#42a5f5' 
+                              : 'grey.700',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          position: 'relative',
+                          overflow: 'hidden',
+                          boxShadow: unlocked ? '0 0 12px rgba(66, 165, 245, 0.4)' : 'none',
+                          animation: unlocked ? 'pulse 2s ease-in-out infinite' : 'none',
+                          '@keyframes pulse': {
+                            '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                            '50%': { opacity: 0.85, transform: 'scale(1.02)' },
+                          },
+                        }}
+                      >
+                        {pick ? (
+                          gameLocked ? (
+                            // Game locked - show team logo
+                            <Box
+                              component="img"
+                              src={pick.team?.logo}
+                              alt={pick.team?.abbreviation}
+                              sx={{ 
+                                width: '75%', 
+                                height: '75%', 
+                                objectFit: 'contain',
+                                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
+                              }}
+                            />
+                          ) : (
+                            // Game not locked - show checkmark
+                            <CheckCircle sx={{ fontSize: 28, color: '#4caf50' }} />
+                          )
+                        ) : unlocked ? (
+                          // Unlocked - ready to pick
+                          <LockOpen sx={{ fontSize: 20, color: '#42a5f5' }} />
+                        ) : (
+                          // Locked
+                          <Lock sx={{ fontSize: 14, color: 'grey.600' }} />
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
               </Paper>
-            ))}
-          </Stack>
-        </Paper>
+            );
+          })}
+        </Box>
 
         {/* Games */}
         <Typography variant="h6" gutterBottom>
