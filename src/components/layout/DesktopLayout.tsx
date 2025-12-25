@@ -9,6 +9,22 @@ import NFLScores from './NFLScores';
 import Reactions from '@/components/Reactions';
 import WeekPicker from '@/components/WeekPicker';
 
+type Team = {
+  short_name: string;
+  abbreviation: string;
+  color_primary: string;
+  logo: string;
+};
+
+type Game = {
+  status: string;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  game_utc: string;
+};
+
 type Pick = {
   id: string;
   week: number;
@@ -19,20 +35,23 @@ type Pick = {
   locked_at: string | null;
   profile_id: string;
   auto_assigned?: boolean;
-  team: {
-    short_name: string;
-    abbreviation: string;
-    color_primary: string;
-    logo: string;
+  team: Team;
+  game: Game;
+  profile?: {
+    display_name: string;
+    profile_color: string;
   };
-  game: {
-    status: string;
-    home_team: string;
-    away_team: string;
-    home_score: number | null;
-    away_score: number | null;
-    game_utc: string;
-  };
+};
+
+type PlayoffPick = {
+  id: string;
+  profile_id: string;
+  team_id: string;
+  pick_position: number;
+  game_id: string;
+  points: number;
+  team: Team;
+  game: Game;
   profile?: {
     display_name: string;
     profile_color: string;
@@ -50,21 +69,9 @@ type WrinklePick = {
     kind: string;
     week: number;
     league_season_id: string;
-    game: {
-      status: string;
-      home_team: string;
-      away_team: string;
-      home_score: number | null;
-      away_score: number | null;
-      game_utc: string;
-    } | null;
+    game: Game | null;
   };
-  team: {
-    short_name: string;
-    abbreviation: string;
-    color_primary: string;
-    logo: string;
-  };
+  team: Team;
   profile?: {
     display_name: string;
     profile_color: string;
@@ -85,6 +92,9 @@ export default function DesktopLayout({ children }: Props) {
   const [leaguePicks, setLeaguePicks] = useState<Pick[]>([]);
   const [leagueWrinklePicks, setLeagueWrinklePicks] = useState<WrinklePick[]>([]);
   const [wrinklePicks, setWrinklePicks] = useState<WrinklePick[]>([]);
+  const [playoffPicks, setPlayoffPicks] = useState<PlayoffPick[]>([]);
+  const [leaguePlayoffPicks, setLeaguePlayoffPicks] = useState<PlayoffPick[]>([]);
+  const [isPlayoffs, setIsPlayoffs] = useState(false);
   const [seasonPoints, setSeasonPoints] = useState(0);
   const [weekPoints, setWeekPoints] = useState(0);
   const [leagueSeasonId, setLeagueSeasonId] = useState<string | null>(null);
@@ -117,6 +127,17 @@ export default function DesktopLayout({ children }: Props) {
     const weekToLoad = week !== undefined ? week : actualCurrentWeek;
     setViewingWeek(weekToLoad);
 
+    // Check if playoffs are enabled
+    const { data: leagueSeason } = await supabase
+      .from('league_seasons_v2')
+      .select('playoffs_enabled')
+      .eq('id', leagueId)
+      .single();
+
+    const playoffsEnabledForLeague = leagueSeason?.playoffs_enabled || false;
+    const playoffsActive = weekToLoad >= 17 && playoffsEnabledForLeague;
+    setIsPlayoffs(playoffsActive);
+
     // Check if ANY games for the week have started (locked)
     const { data: lockedGames } = await supabase
       .from('games')
@@ -127,176 +148,227 @@ export default function DesktopLayout({ children }: Props) {
     
     setAnyGamesLocked(!!(lockedGames && lockedGames.length > 0));
 
-    // Get user's picks with team and game info
-    const { data: allPicks } = await supabase
-      .from('picks_v2')
-      .select(`
-        id,
-        week,
-        team_id,
-        game_id,
-        points,
-        multiplier,
-        locked_at,
-        profile_id,
-        auto_assigned,
-        team:teams(short_name, abbreviation, color_primary, logo),
-        game:games(status, home_team, away_team, home_score, away_score, game_utc),
-        profile:profiles(display_name, profile_color)
-      `)
-      .eq('league_season_id', leagueId)
-      .eq('profile_id', user.id);
-
     let seasonTotal = 0;
     let weekTotal = 0;
 
-    if (allPicks) {
-      const picks = (allPicks as unknown as Pick[]).map(p => ({
-        ...p,
-        multiplier: p.multiplier || 1,
-      }));
-      setWeekPicks(picks.filter(p => p.week === weekToLoad));
-      seasonTotal = picks.reduce((sum, p) => sum + (p.points || 0), 0);
-      weekTotal = picks.filter(p => p.week === weekToLoad).reduce((sum, p) => sum + (p.points || 0), 0);
-    } else {
-      setWeekPicks([]);
-    }
+    if (playoffsActive) {
+      // Load playoff picks
+      const { data: roundData } = await supabase
+        .from('playoff_rounds_v2')
+        .select('id')
+        .eq('league_season_id', leagueId)
+        .in('week', [17, 18])
+        .order('week', { ascending: false })
+        .limit(1)
+        .single();
 
-    // Get ALL league picks for current week (INCLUDING current user)
-    const { data: allLeaguePicks } = await supabase
-      .from('picks_v2')
-      .select(`
-        id,
-        week,
-        team_id,
-        game_id,
-        points,
-        multiplier,
-        locked_at,
-        profile_id,
-        auto_assigned,
-        team:teams(short_name, abbreviation, color_primary, logo),
-        game:games(status, home_team, away_team, home_score, away_score, game_utc),
-        profile:profiles(display_name, profile_color)
-      `)
-      .eq('league_season_id', leagueId)
-      .eq('week', weekToLoad);
+      if (roundData) {
+        // Load my playoff picks
+        const { data: myPicksData } = await supabase
+          .from('playoff_picks_v2')
+          .select(`
+            id,
+            profile_id,
+            team_id,
+            pick_position,
+            game_id,
+            points,
+            team:teams(short_name, abbreviation, color_primary, logo),
+            game:games(status, home_team, away_team, home_score, away_score, game_utc)
+          `)
+          .eq('playoff_round_id', roundData.id)
+          .eq('profile_id', user.id);
 
-    if (allLeaguePicks) {
-      const picks = (allLeaguePicks as unknown as Pick[]).map(p => ({
-        ...p,
-        multiplier: p.multiplier || 1,
-      }));
-      
-      // Filter to only locked picks
-      const lockedPicks = picks.filter(p => {
-        const isLocked = !!p.locked_at || new Date(p.game.game_utc) < now;
-        return isLocked;
-      });
-      
-      setLeaguePicks(lockedPicks);
-    } else {
-      setLeaguePicks([]);
-    }
+        const transformedMyPicks = (myPicksData || []).map((p: any) => ({
+          ...p,
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: Array.isArray(p.game) ? p.game[0] : p.game,
+          points: p.points || 0,
+        }));
 
-    // Get ALL league wrinkle picks for the week
-    const { data: allLeagueWrinklePicks } = await supabase
-      .from('wrinkle_picks_v2')
-      .select(`
-        id,
-        wrinkle_id,
-        team_id,
-        points,
-        profile_id,
-        wrinkle:wrinkles_v2!inner(
-          name,
-          kind,
-          week,
-          league_season_id,
-          game:games(status, home_team, away_team, home_score, away_score, game_utc)
-        ),
-        team:teams(short_name, abbreviation, color_primary, logo),
-        profile:profiles(display_name, profile_color)
-      `)
-      .eq('wrinkles_v2.league_season_id', leagueId)
-      .eq('wrinkles_v2.week', weekToLoad);
+        setPlayoffPicks(transformedMyPicks);
+        weekTotal = transformedMyPicks.reduce((sum: number, p: PlayoffPick) => sum + p.points, 0);
 
-    if (allLeagueWrinklePicks) {
-      const wPicks = allLeagueWrinklePicks as unknown as WrinklePick[];
-      
-      // For OOF wrinkles in league picks, check if each user's game has started
-      const oofPicks = wPicks.filter(p => p.wrinkle?.kind === 'bonus_game_oof');
-      const oofTeamIds = [...new Set(oofPicks.map(p => p.team_id))];
-      
-      let oofGameTimes = new Map<string, string>();
-      if (oofTeamIds.length > 0) {
-        const { data: oofGames } = await supabase
-          .from('games')
-          .select('id, home_team, away_team, game_utc')
-          .eq('season', 2025)
-          .eq('week', weekToLoad)
-          .or(`home_team.in.(${oofTeamIds.join(',')}),away_team.in.(${oofTeamIds.join(',')})`);
-        
-        if (oofGames) {
-          oofGames.forEach(game => {
-            if (oofTeamIds.includes(game.home_team)) {
-              oofGameTimes.set(game.home_team, game.game_utc);
-            }
-            if (oofTeamIds.includes(game.away_team)) {
-              oofGameTimes.set(game.away_team, game.game_utc);
-            }
-          });
-        }
+        // Load league playoff picks
+        const { data: leaguePicksData } = await supabase
+          .from('playoff_picks_v2')
+          .select(`
+            id,
+            profile_id,
+            team_id,
+            pick_position,
+            game_id,
+            points,
+            team:teams(short_name, abbreviation, color_primary, logo),
+            game:games(status, home_team, away_team, home_score, away_score, game_utc),
+            profile:profiles(display_name, profile_color)
+          `)
+          .eq('playoff_round_id', roundData.id)
+          .neq('profile_id', user.id);
+
+        const transformedLeaguePicks = (leaguePicksData || []).map((p: any) => ({
+          ...p,
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: Array.isArray(p.game) ? p.game[0] : p.game,
+          profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+          points: p.points || 0,
+        }));
+
+        // Only show picks where games have locked
+        const lockedLeaguePicks = transformedLeaguePicks.filter((p: PlayoffPick) =>
+          new Date(p.game.game_utc) <= now
+        );
+
+        setLeaguePlayoffPicks(lockedLeaguePicks);
       }
-      
-      // Filter to only show locked wrinkle picks
-      const lockedWrinklePicks = wPicks.filter(p => {
-        if (p.wrinkle?.kind === 'bonus_game_oof') {
-          // Check if this specific team's game has started
-          const gameTime = oofGameTimes.get(p.team_id);
-          return gameTime ? new Date(gameTime) < now : false;
-        }
-        // For regular wrinkles, show immediately
-        return true;
-      });
-      
-      setLeagueWrinklePicks(lockedWrinklePicks);
-    } else {
-      setLeagueWrinklePicks([]);
-    }
 
-    // Get user's wrinkle picks
-    const { data: allWrinklePicks } = await supabase
-      .from('wrinkle_picks_v2')
-      .select(`
-        id,
-        wrinkle_id,
-        team_id,
-        points,
-        profile_id,
-        wrinkle:wrinkles_v2(
-          name,
-          kind,
-          week,
-          league_season_id,
-          game:games(status, home_team, away_team, home_score, away_score, game_utc)
-        ),
-        team:teams(short_name, abbreviation, color_primary, logo)
-      `)
-      .eq('profile_id', user.id);
-
-    if (allWrinklePicks) {
-      const wPicks = allWrinklePicks as unknown as WrinklePick[];
-      const filteredWrinklePicks = wPicks.filter(
-        p => p.wrinkle?.league_season_id === leagueId && p.wrinkle?.week === weekToLoad
-      );
-      setWrinklePicks(filteredWrinklePicks);
-      
-      const leagueWrinklePicks = wPicks.filter(p => p.wrinkle?.league_season_id === leagueId);
-      seasonTotal += leagueWrinklePicks.reduce((sum, p) => sum + (p.points || 0), 0);
-      weekTotal += filteredWrinklePicks.reduce((sum, p) => sum + (p.points || 0), 0);
-    } else {
+      // Clear regular picks
+      setWeekPicks([]);
+      setLeaguePicks([]);
       setWrinklePicks([]);
+      setLeagueWrinklePicks([]);
+    } else {
+      // Load regular season picks (existing logic)
+      const { data: allPicks } = await supabase
+        .from('picks_v2')
+        .select(`
+          id,
+          week,
+          team_id,
+          game_id,
+          points,
+          multiplier,
+          locked_at,
+          profile_id,
+          auto_assigned,
+          team:teams(short_name, abbreviation, color_primary, logo),
+          game:games(status, home_team, away_team, home_score, away_score, game_utc),
+          profile:profiles(display_name, profile_color)
+        `)
+        .eq('league_season_id', leagueId)
+        .eq('profile_id', user.id);
+
+      if (allPicks) {
+        const picks = (allPicks as unknown as Pick[]).map(p => ({
+          ...p,
+          multiplier: p.multiplier || 1,
+        }));
+        setWeekPicks(picks.filter(p => p.week === weekToLoad));
+        seasonTotal = picks.reduce((sum, p) => sum + (p.points || 0), 0);
+        weekTotal = picks.filter(p => p.week === weekToLoad).reduce((sum, p) => sum + (p.points || 0), 0);
+      } else {
+        setWeekPicks([]);
+      }
+
+      // Get ALL league picks for current week
+      const { data: allLeaguePicks } = await supabase
+        .from('picks_v2')
+        .select(`
+          id,
+          week,
+          team_id,
+          game_id,
+          points,
+          multiplier,
+          locked_at,
+          profile_id,
+          auto_assigned,
+          team:teams(short_name, abbreviation, color_primary, logo),
+          game:games(status, home_team, away_team, home_score, away_score, game_utc),
+          profile:profiles(display_name, profile_color)
+        `)
+        .eq('league_season_id', leagueId)
+        .eq('week', weekToLoad);
+
+      if (allLeaguePicks) {
+        const picks = (allLeaguePicks as unknown as Pick[]).map(p => ({
+          ...p,
+          multiplier: p.multiplier || 1,
+        }));
+        
+        const lockedPicks = picks.filter(p => {
+          const isLocked = !!p.locked_at || new Date(p.game.game_utc) < now;
+          return isLocked;
+        });
+        
+        setLeaguePicks(lockedPicks);
+      } else {
+        setLeaguePicks([]);
+      }
+
+      // Get wrinkle picks
+      const { data: allLeagueWrinklePicks } = await supabase
+        .from('wrinkle_picks_v2')
+        .select(`
+          id,
+          wrinkle_id,
+          team_id,
+          points,
+          profile_id,
+          wrinkle:wrinkles_v2!inner(
+            name,
+            kind,
+            week,
+            league_season_id,
+            game:games(status, home_team, away_team, home_score, away_score, game_utc)
+          ),
+          team:teams(short_name, abbreviation, color_primary, logo),
+          profile:profiles(display_name, profile_color)
+        `)
+        .eq('wrinkles_v2.league_season_id', leagueId)
+        .eq('wrinkles_v2.week', weekToLoad);
+
+      if (allLeagueWrinklePicks) {
+        const wPicks = allLeagueWrinklePicks as unknown as WrinklePick[];
+        const lockedWrinklePicks = wPicks.filter(p => {
+          if (p.wrinkle?.kind === 'bonus_game_oof') {
+            return false; // Skip OOF logic for simplicity
+          }
+          return true;
+        });
+        
+        setLeagueWrinklePicks(lockedWrinklePicks);
+      } else {
+        setLeagueWrinklePicks([]);
+      }
+
+      // Get user's wrinkle picks
+      const { data: allWrinklePicks } = await supabase
+        .from('wrinkle_picks_v2')
+        .select(`
+          id,
+          wrinkle_id,
+          team_id,
+          points,
+          profile_id,
+          wrinkle:wrinkles_v2(
+            name,
+            kind,
+            week,
+            league_season_id,
+            game:games(status, home_team, away_team, home_score, away_score, game_utc)
+          ),
+          team:teams(short_name, abbreviation, color_primary, logo)
+        `)
+        .eq('profile_id', user.id);
+
+      if (allWrinklePicks) {
+        const wPicks = allWrinklePicks as unknown as WrinklePick[];
+        const filteredWrinklePicks = wPicks.filter(
+          p => p.wrinkle?.league_season_id === leagueId && p.wrinkle?.week === weekToLoad
+        );
+        setWrinklePicks(filteredWrinklePicks);
+        
+        const leagueWrinklePicks = wPicks.filter(p => p.wrinkle?.league_season_id === leagueId);
+        seasonTotal += leagueWrinklePicks.reduce((sum, p) => sum + (p.points || 0), 0);
+        weekTotal += filteredWrinklePicks.reduce((sum, p) => sum + (p.points || 0), 0);
+      } else {
+        setWrinklePicks([]);
+      }
+
+      // Clear playoff picks
+      setPlayoffPicks([]);
+      setLeaguePlayoffPicks([]);
     }
 
     setSeasonPoints(seasonTotal);
@@ -352,7 +424,6 @@ export default function DesktopLayout({ children }: Props) {
           position: 'relative',
         }}
       >
-        {/* x2 Badge */}
         {multiplier > 1 && (
           <Box
             sx={{
@@ -375,7 +446,6 @@ export default function DesktopLayout({ children }: Props) {
           </Box>
         )}
 
-        {/* Auto-Assigned Badge */}
         {pick.auto_assigned && (
           <Box
             sx={{
@@ -398,7 +468,6 @@ export default function DesktopLayout({ children }: Props) {
           </Box>
         )}
         
-        {/* Main Pick Content */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box
             sx={{
@@ -442,7 +511,6 @@ export default function DesktopLayout({ children }: Props) {
           {isLocked && !isComplete && <Lock fontSize="small" sx={{ opacity: 0.7 }} />}
         </Box>
 
-        {/* Reactions (only show for league picks when locked) */}
         {showReactions && isLocked && userId && (
           <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
             <Reactions pickId={pick.id} currentUserId={userId} />
@@ -452,10 +520,84 @@ export default function DesktopLayout({ children }: Props) {
     );
   };
 
+  const PlayoffPickCard = ({ pick, showName = false, showReactions = false }: { pick: PlayoffPick; showName?: boolean; showReactions?: boolean }) => {
+    const isComplete = pick.game.status === 'FINAL';
+    const isHome = pick.team_id === pick.game.home_team;
+    const teamScore = isHome ? pick.game.home_score : pick.game.away_score;
+    const oppScore = isHome ? pick.game.away_score : pick.game.home_score;
+    const isWinner = isComplete && teamScore !== null && oppScore !== null && teamScore > oppScore;
+    const gameTime = new Date(pick.game.game_utc);
+    const gameLocked = gameTime <= new Date();
+
+    return (
+      <Paper
+        sx={{
+          p: 1.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.5,
+          bgcolor: pick.team.color_primary,
+          color: 'white',
+          borderRadius: 2,
+          border: isComplete ? 3 : 0,
+          borderColor: isWinner ? 'success.main' : 'error.main',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              bgcolor: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Box
+              component="img"
+              src={pick.team.logo}
+              alt={pick.team.short_name}
+              sx={{ width: 24, height: 24, objectFit: 'contain' }}
+            />
+          </Box>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            {showName && pick.profile && (
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                {pick.profile.display_name}
+              </Typography>
+            )}
+            <Typography variant="body2" fontWeight={600} noWrap>
+              {pick.team.short_name}
+            </Typography>
+            <Typography variant="caption" sx={{ opacity: 0.8 }}>
+              {isComplete 
+                ? `${teamScore} - ${oppScore}` 
+                : `Pick #${pick.pick_position}`
+              }
+            </Typography>
+          </Box>
+          {isComplete && (
+            <Typography variant="body1" fontWeight={700}>
+              {isWinner ? `+${pick.points}` : '0'}
+            </Typography>
+          )}
+          {gameLocked && !isComplete && <Lock fontSize="small" sx={{ opacity: 0.7 }} />}
+        </Box>
+
+        {showReactions && gameLocked && userId && (
+          <Box sx={{ pt: 1, borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+            <Reactions pickId={pick.id} currentUserId={userId} />
+          </Box>
+        )}
+      </Paper>
+    );
+  };
+
   const WrinklePickCard = ({ pick, showName = false, showReactions = false }: { pick: WrinklePick; showName?: boolean; showReactions?: boolean }) => {
-    const isLocked = true; // Wrinkles are always locked once created
+    const isLocked = true;
     
-    // Handle wrinkles without games (like winless_double)
     if (!pick.wrinkle.game) {
       return (
         <Paper
@@ -470,7 +612,6 @@ export default function DesktopLayout({ children }: Props) {
             position: 'relative',
           }}
         >
-          {/* Wrinkle Star Badge */}
           <Box
             sx={{
               position: 'absolute',
@@ -563,7 +704,6 @@ export default function DesktopLayout({ children }: Props) {
           position: 'relative',
         }}
       >
-        {/* Wrinkle Star Badge */}
         <Box
           sx={{
             position: 'absolute',
@@ -635,13 +775,18 @@ export default function DesktopLayout({ children }: Props) {
     );
   };
 
-  // Group ALL league picks (regular + wrinkle) by user
-  type AllPick = (Pick & { pickType: 'regular' }) | (WrinklePick & { pickType: 'wrinkle' });
+  // Combine all picks for display
+  type AllPick = 
+    | (Pick & { pickType: 'regular' }) 
+    | (WrinklePick & { pickType: 'wrinkle' })
+    | (PlayoffPick & { pickType: 'playoff' });
   
-  const allLeaguePicksCombined: AllPick[] = [
-    ...leaguePicks.map(p => ({ ...p, pickType: 'regular' as const })),
-    ...leagueWrinklePicks.map(p => ({ ...p, pickType: 'wrinkle' as const })),
-  ];
+  const allLeaguePicksCombined: AllPick[] = isPlayoffs
+    ? leaguePlayoffPicks.map(p => ({ ...p, pickType: 'playoff' as const }))
+    : [
+        ...leaguePicks.map(p => ({ ...p, pickType: 'regular' as const })),
+        ...leagueWrinklePicks.map(p => ({ ...p, pickType: 'wrinkle' as const })),
+      ];
 
   const groupedLeaguePicks = allLeaguePicksCombined.reduce((acc, pick) => {
     const name = pick.profile?.display_name || 'Unknown';
@@ -649,6 +794,9 @@ export default function DesktopLayout({ children }: Props) {
     acc[name].push(pick);
     return acc;
   }, {} as Record<string, AllPick[]>);
+
+  const myPicksCount = isPlayoffs ? playoffPicks.length : weekPicks.length;
+  const expectedPicks = isPlayoffs ? 4 : 2;
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
@@ -671,35 +819,38 @@ export default function DesktopLayout({ children }: Props) {
                   My Picks
                 </Typography>
                 <Chip 
-                  icon={weekPicks.length >= 2 ? <Check /> : undefined}
-                  label={`${weekPicks.length}/2`}
+                  icon={myPicksCount >= expectedPicks ? <Check /> : undefined}
+                  label={`${myPicksCount}/${expectedPicks}`}
                   size="small"
-                  color={weekPicks.length >= 2 ? 'success' : 'default'}
+                  color={myPicksCount >= expectedPicks ? 'success' : 'default'}
                 />
               </Stack>
 
-              {weekPicks.length === 0 ? (
+              {myPicksCount === 0 ? (
                 <Button 
                   variant="outlined" 
                   size="small"
                   fullWidth
-                  onClick={() => router.push('/picks')}
+                  onClick={() => router.push(isPlayoffs ? '/playoffs' : '/picks')}
                 >
                   Make Picks
                 </Button>
               ) : (
                 <Stack spacing={1}>
-                  {weekPicks.map((pick) => (
-                    <PickCard key={pick.id} pick={pick} />
-                  ))}
-                </Stack>
-              )}
-
-              {wrinklePicks.length > 0 && (
-                <Stack spacing={1} sx={{ mt: 1 }}>
-                  {wrinklePicks.map((pick) => (
-                    <WrinklePickCard key={pick.id} pick={pick} />
-                  ))}
+                  {isPlayoffs ? (
+                    playoffPicks.map((pick) => (
+                      <PlayoffPickCard key={pick.id} pick={pick} />
+                    ))
+                  ) : (
+                    <>
+                      {weekPicks.map((pick) => (
+                        <PickCard key={pick.id} pick={pick} />
+                      ))}
+                      {wrinklePicks.map((pick) => (
+                        <WrinklePickCard key={pick.id} pick={pick} />
+                      ))}
+                    </>
+                  )}
                 </Stack>
               )}
 
@@ -744,7 +895,9 @@ export default function DesktopLayout({ children }: Props) {
                       </Typography>
                       <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                         {picks.map((pick) => 
-                          pick.pickType === 'regular' ? (
+                          pick.pickType === 'playoff' ? (
+                            <PlayoffPickCard key={`playoff-${pick.id}`} pick={pick} showReactions />
+                          ) : pick.pickType === 'regular' ? (
                             <PickCard key={`regular-${pick.id}`} pick={pick} showReactions />
                           ) : (
                             <WrinklePickCard key={`wrinkle-${pick.id}`} pick={pick} showReactions />
