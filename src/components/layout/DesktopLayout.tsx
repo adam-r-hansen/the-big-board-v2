@@ -121,11 +121,13 @@ export default function DesktopLayout({ children }: Props) {
       .limit(1)
       .single();
 
-    const actualCurrentWeek = nextGame?.week || 1;
+    const actualCurrentWeek = nextGame?.week || 17; // Default to 17 for testing
     setCurrentWeek(actualCurrentWeek);
     
     const weekToLoad = week !== undefined ? week : actualCurrentWeek;
     setViewingWeek(weekToLoad);
+
+    console.log('DesktopLayout - Week:', weekToLoad);
 
     // Check if playoffs are enabled
     const { data: leagueSeason } = await supabase
@@ -136,6 +138,13 @@ export default function DesktopLayout({ children }: Props) {
 
     const playoffsEnabledForLeague = leagueSeason?.playoffs_enabled || false;
     const playoffsActive = weekToLoad >= 17 && playoffsEnabledForLeague;
+    
+    console.log('DesktopLayout - Playoffs check:', {
+      weekToLoad,
+      playoffsEnabledForLeague,
+      playoffsActive
+    });
+    
     setIsPlayoffs(playoffsActive);
 
     // Check if ANY games for the week have started (locked)
@@ -152,15 +161,17 @@ export default function DesktopLayout({ children }: Props) {
     let weekTotal = 0;
 
     if (playoffsActive) {
+      console.log('DesktopLayout - Loading PLAYOFF picks');
+      
       // Load playoff picks
       const { data: roundData } = await supabase
         .from('playoff_rounds_v2')
-        .select('id')
+        .select('id, week')
         .eq('league_season_id', leagueId)
-        .in('week', [17, 18])
-        .order('week', { ascending: false })
-        .limit(1)
+        .eq('week', weekToLoad)
         .single();
+
+      console.log('DesktopLayout - Round data:', roundData);
 
       if (roundData) {
         // Load my playoff picks
@@ -179,12 +190,16 @@ export default function DesktopLayout({ children }: Props) {
           .eq('playoff_round_id', roundData.id)
           .eq('profile_id', user.id);
 
+        console.log('DesktopLayout - My playoff picks raw:', myPicksData);
+
         const transformedMyPicks = (myPicksData || []).map((p: any) => ({
           ...p,
           team: Array.isArray(p.team) ? p.team[0] : p.team,
           game: Array.isArray(p.game) ? p.game[0] : p.game,
           points: p.points || 0,
         }));
+
+        console.log('DesktopLayout - My playoff picks transformed:', transformedMyPicks);
 
         setPlayoffPicks(transformedMyPicks);
         weekTotal = transformedMyPicks.reduce((sum: number, p: PlayoffPick) => sum + p.points, 0);
@@ -228,6 +243,8 @@ export default function DesktopLayout({ children }: Props) {
       setWrinklePicks([]);
       setLeagueWrinklePicks([]);
     } else {
+      console.log('DesktopLayout - Loading REGULAR picks');
+      
       // Load regular season picks (existing logic)
       const { data: allPicks } = await supabase
         .from('picks_v2')
@@ -322,7 +339,7 @@ export default function DesktopLayout({ children }: Props) {
         const wPicks = allLeagueWrinklePicks as unknown as WrinklePick[];
         const lockedWrinklePicks = wPicks.filter(p => {
           if (p.wrinkle?.kind === 'bonus_game_oof') {
-            return false; // Skip OOF logic for simplicity
+            return false;
           }
           return true;
         });
@@ -798,6 +815,14 @@ export default function DesktopLayout({ children }: Props) {
   const myPicksCount = isPlayoffs ? playoffPicks.length : weekPicks.length;
   const expectedPicks = isPlayoffs ? 4 : 2;
 
+  console.log('DesktopLayout - Render state:', {
+    isPlayoffs,
+    myPicksCount,
+    expectedPicks,
+    playoffPicksLength: playoffPicks.length,
+    weekPicksLength: weekPicks.length
+  });
+
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
       {/* Left Column - Picks */}
@@ -816,7 +841,7 @@ export default function DesktopLayout({ children }: Props) {
             <Box sx={{ mb: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  My Picks
+                  My Picks {isPlayoffs && '(Playoffs)'}
                 </Typography>
                 <Chip 
                   icon={myPicksCount >= expectedPicks ? <Check /> : undefined}
