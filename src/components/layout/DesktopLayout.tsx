@@ -153,12 +153,13 @@ export default function DesktopLayout({ children }: Props) {
     let weekTotal = 0;
 
     if (playoffsActive) {
-      // Load playoff picks
+      // Load playoff picks - exclude non_playoff rounds
       const { data: roundData } = await supabase
         .from('playoff_rounds_v2')
         .select('id, week')
         .eq('league_season_id', leagueId)
         .eq('week', weekToLoad)
+        .in('round_type', ['semifinal', 'championship'])
         .limit(1)
         .maybeSingle();
 
@@ -816,7 +817,7 @@ export default function DesktopLayout({ children }: Props) {
             <Box sx={{ mb: 3 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  My Picks {isPlayoffs && '(Playoffs)'}
+                  My Picks
                 </Typography>
                 <Chip 
                   icon={myPicksCount >= expectedPicks ? <Check /> : undefined}
