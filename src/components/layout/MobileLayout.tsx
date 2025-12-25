@@ -167,7 +167,7 @@ export default function MobileLayout({ children }: Props) {
       .limit(1)
       .single();
 
-    const actualCurrentWeek = nextGame?.week || 1;
+    const actualCurrentWeek = nextGame?.week || 17;
     setCurrentWeek(actualCurrentWeek);
     
     const weekToLoad = week !== undefined ? week : actualCurrentWeek;
@@ -198,15 +198,15 @@ export default function MobileLayout({ children }: Props) {
     setAnyGamesLocked(!!lockedGames && lockedGames.length > 0);
 
     if (isPlayoffs) {
-      // Load playoff picks instead of regular picks
+      // Load playoff picks instead of regular picks - exclude non_playoff rounds
       const { data: roundData } = await supabase
         .from('playoff_rounds_v2')
         .select('id, draft_start_time, round_type, week')
         .eq('league_season_id', leagueId)
-        .in('week', [17, 18])
-        .order('week', { ascending: false })
+        .eq('week', weekToLoad)
+        .in('round_type', ['semifinal', 'championship'])
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (roundData) {
         setPlayoffWeek(roundData.week);
@@ -222,6 +222,7 @@ export default function MobileLayout({ children }: Props) {
             team_id,
             pick_position,
             game_id,
+            points,
             team:teams(id, name, short_name, abbreviation, color_primary, logo),
             game:games(id, game_utc, status)
           `)
@@ -232,6 +233,7 @@ export default function MobileLayout({ children }: Props) {
           ...p,
           team: Array.isArray(p.team) ? p.team[0] : p.team,
           game: Array.isArray(p.game) ? p.game[0] : p.game,
+          points: p.points || 0,
         }));
 
         setMyPlayoffPicks(transformedMyPicks);
@@ -249,6 +251,7 @@ export default function MobileLayout({ children }: Props) {
             team_id,
             pick_position,
             game_id,
+            points,
             team:teams(id, name, short_name, abbreviation, color_primary, logo),
             game:games(id, game_utc, status),
             profile:profiles(display_name, profile_color)
@@ -261,9 +264,15 @@ export default function MobileLayout({ children }: Props) {
           team: Array.isArray(p.team) ? p.team[0] : p.team,
           game: Array.isArray(p.game) ? p.game[0] : p.game,
           profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+          points: p.points || 0,
         }));
 
-        setLeaguePlayoffPicks(transformedLeaguePicks);
+        // Filter to show only locked league picks
+        const lockedLeaguePicks = transformedLeaguePicks.filter((p: PlayoffPick) =>
+          p.game?.game_utc ? new Date(p.game.game_utc) <= now : false
+        );
+
+        setLeaguePlayoffPicks(lockedLeaguePicks);
 
         // Load playoff participants for LEAGUE tab
         const { data: participantsData } = await supabase
