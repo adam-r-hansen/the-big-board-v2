@@ -1,13 +1,13 @@
 /**
- * Snake Draft Unlock Schedule Generator
+ * Cascading Draft Unlock Schedule Generator
  * 
- * Week 17 (Semifinals): 1-1-2-3-4-1-2-3-4 = 9 windows, 4 picks each
+ * Week 17 (Semifinals): 1-1-2-3-4-1-2-3-4-1-2-3-4-2-3-4 = 16 picks total
  * Week 18 (Championship): 1-2-1-2-1-2-1-2 = 8 windows, 4 picks each
  * 
  * Timing:
- * - 3-hour intervals
+ * - 2-hour intervals
  * - Sleep mode: 8pm-9am PT (no overnight unlocks)
- * - Starts Tuesday 9am PT
+ * - Starts Monday 9am PT
  */
 
 export type UnlockWindow = {
@@ -17,11 +17,25 @@ export type UnlockWindow = {
   windowIndex: number;
 };
 
-// Snake draft order for Week 17 semifinals (top 4 teams)
+// Cascading draft order for Week 17 semifinals (top 4 teams)
+// Order: 1-1-2-3-4 / 1-2-3-4 / 1-2-3-4 / 2-3-4
 const WEEK_17_DRAFT_ORDER: [number, number][] = [
-  [1, 1], [1, 2], [2, 1], [3, 1], [4, 1], [1, 3], 
-  [2, 2], [3, 2], [4, 2], [2, 3], [3, 3], [4, 3], 
-  [1, 4], [2, 4], [3, 4], [4, 4]
+  [1, 1], // Pick 1: Seed 1, Position 1
+  [1, 2], // Pick 2: Seed 1, Position 2
+  [2, 1], // Pick 3: Seed 2, Position 1
+  [3, 1], // Pick 4: Seed 3, Position 1
+  [4, 1], // Pick 5: Seed 4, Position 1
+  [1, 3], // Pick 6: Seed 1, Position 3
+  [2, 2], // Pick 7: Seed 2, Position 2
+  [3, 2], // Pick 8: Seed 3, Position 2
+  [4, 2], // Pick 9: Seed 4, Position 2
+  [1, 4], // Pick 10: Seed 1, Position 4
+  [2, 3], // Pick 11: Seed 2, Position 3
+  [3, 3], // Pick 12: Seed 3, Position 3
+  [4, 3], // Pick 13: Seed 4, Position 3
+  [2, 4], // Pick 14: Seed 2, Position 4
+  [3, 4], // Pick 15: Seed 3, Position 4
+  [4, 4], // Pick 16: Seed 4, Position 4
 ];
 
 // Snake draft order for Week 18 championship (top 2 teams)
@@ -30,7 +44,7 @@ const WEEK_18_DRAFT_ORDER: [number, number][] = [
   [1, 3], [2, 3], [1, 4], [2, 4]
 ];
 
-const INTERVAL_HOURS = 3;
+const INTERVAL_HOURS = 2; // Changed from 3 to 2 hours
 const SLEEP_START_HOUR = 20; // 8pm PT
 const SLEEP_END_HOUR = 9;    // 9am PT
 
