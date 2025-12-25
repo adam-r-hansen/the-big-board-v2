@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -11,21 +11,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = await createClient();
+    // Use service role client (bypasses RLS)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
     // Get all active league seasons
     const { data: leagueSeasons, error: lsError } = await supabase
       .from('league_seasons_v2')
-      .select('id')
+      .select('id, season')
       .eq('season', 2025);
+
+    console.log('League query result:', { leagueSeasons, error: lsError });
 
     if (lsError) {
       console.error('Error fetching league seasons:', lsError);
-      return NextResponse.json({ error: 'Failed to fetch leagues' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to fetch leagues', 
+        details: lsError.message,
+        code: lsError.code 
+      }, { status: 500 });
     }
 
     if (!leagueSeasons || leagueSeasons.length === 0) {
-      return NextResponse.json({ message: 'No active leagues found' });
+      return NextResponse.json({ 
+        message: 'No active leagues found',
+        debug: {
+          hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          queryResult: leagueSeasons
+        }
+      });
     }
 
     // Calculate standings for each league
