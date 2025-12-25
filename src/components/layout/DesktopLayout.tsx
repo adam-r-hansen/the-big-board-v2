@@ -121,13 +121,11 @@ export default function DesktopLayout({ children }: Props) {
       .limit(1)
       .single();
 
-    const actualCurrentWeek = nextGame?.week || 17; // Default to 17 for testing
+    const actualCurrentWeek = nextGame?.week || 17;
     setCurrentWeek(actualCurrentWeek);
     
     const weekToLoad = week !== undefined ? week : actualCurrentWeek;
     setViewingWeek(weekToLoad);
-
-    console.log('DesktopLayout - Week:', weekToLoad);
 
     // Check if playoffs are enabled
     const { data: leagueSeason } = await supabase
@@ -138,12 +136,6 @@ export default function DesktopLayout({ children }: Props) {
 
     const playoffsEnabledForLeague = leagueSeason?.playoffs_enabled || false;
     const playoffsActive = weekToLoad >= 17 && playoffsEnabledForLeague;
-    
-    console.log('DesktopLayout - Playoffs check:', {
-      weekToLoad,
-      playoffsEnabledForLeague,
-      playoffsActive
-    });
     
     setIsPlayoffs(playoffsActive);
 
@@ -161,17 +153,14 @@ export default function DesktopLayout({ children }: Props) {
     let weekTotal = 0;
 
     if (playoffsActive) {
-      console.log('DesktopLayout - Loading PLAYOFF picks');
-      
       // Load playoff picks
       const { data: roundData } = await supabase
         .from('playoff_rounds_v2')
         .select('id, week')
         .eq('league_season_id', leagueId)
         .eq('week', weekToLoad)
-        .single();
-
-      console.log('DesktopLayout - Round data:', roundData);
+        .limit(1)
+        .maybeSingle();
 
       if (roundData) {
         // Load my playoff picks
@@ -190,16 +179,12 @@ export default function DesktopLayout({ children }: Props) {
           .eq('playoff_round_id', roundData.id)
           .eq('profile_id', user.id);
 
-        console.log('DesktopLayout - My playoff picks raw:', myPicksData);
-
         const transformedMyPicks = (myPicksData || []).map((p: any) => ({
           ...p,
           team: Array.isArray(p.team) ? p.team[0] : p.team,
           game: Array.isArray(p.game) ? p.game[0] : p.game,
           points: p.points || 0,
         }));
-
-        console.log('DesktopLayout - My playoff picks transformed:', transformedMyPicks);
 
         setPlayoffPicks(transformedMyPicks);
         weekTotal = transformedMyPicks.reduce((sum: number, p: PlayoffPick) => sum + p.points, 0);
@@ -243,8 +228,6 @@ export default function DesktopLayout({ children }: Props) {
       setWrinklePicks([]);
       setLeagueWrinklePicks([]);
     } else {
-      console.log('DesktopLayout - Loading REGULAR picks');
-      
       // Load regular season picks (existing logic)
       const { data: allPicks } = await supabase
         .from('picks_v2')
@@ -814,14 +797,6 @@ export default function DesktopLayout({ children }: Props) {
 
   const myPicksCount = isPlayoffs ? playoffPicks.length : weekPicks.length;
   const expectedPicks = isPlayoffs ? 4 : 2;
-
-  console.log('DesktopLayout - Render state:', {
-    isPlayoffs,
-    myPicksCount,
-    expectedPicks,
-    playoffPicksLength: playoffPicks.length,
-    weekPicksLength: weekPicks.length
-  });
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
