@@ -141,17 +141,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if game is already picked by another playoff team
-    const { data: existingGamePick } = await supabase
+    // Check if THIS SPECIFIC TEAM is already picked by another playoff participant
+    const { data: existingTeamPick } = await supabase
       .from('playoff_picks_v2')
       .select('id, profile_id')
       .eq('playoff_round_id', roundId)
-      .eq('game_id', gameId)
+      .eq('team_id', teamId)  // ✅ Check if THIS TEAM is taken
       .neq('profile_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (existingGamePick) {
-      return NextResponse.json({ error: 'This game is already picked by another playoff team' }, { status: 400 });
+    if (existingTeamPick) {
+      return NextResponse.json({ error: 'This team has already been picked by another playoff participant' }, { status: 400 });
     }
   }
 
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     .eq('playoff_round_id', roundId)
     .eq('profile_id', user.id)
     .eq('pick_position', pickPosition || 1)
-    .single();
+    .maybeSingle();
 
   const now = new Date().toISOString();
 
