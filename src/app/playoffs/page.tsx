@@ -72,7 +72,6 @@ export default function PlayoffsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
   const [round, setRound] = useState<Round | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [allParticipants, setAllParticipants] = useState<Participant[]>([]);
@@ -118,6 +117,7 @@ export default function PlayoffsPage() {
         setLoading(false);
         return;
       }
+
       setRound(roundData);
 
       if (roundData.draft_start_time) {
@@ -136,7 +136,6 @@ export default function PlayoffsPage() {
         .eq('profile_id', user.id)
         .single();
 
-      // Transform profile array to single object
       const transformedParticipant = participantData ? {
         ...participantData,
         profile: Array.isArray(participantData.profile) ? participantData.profile[0] : participantData.profile
@@ -146,12 +145,11 @@ export default function PlayoffsPage() {
 
       const { data: allParticipantsData } = await supabase
         .from('playoff_participants_v2')
-        .select(`*, profile:profiles(display_name, email)`)
+        .select('*, profile:profiles(display_name, email)')
         .eq('playoff_round_id', roundData.id)
         .lte('seed', 4)
         .order('seed', { ascending: true });
 
-      // Transform all participants
       const transformedParticipants = (allParticipantsData || []).map(p => ({
         ...p,
         profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
@@ -173,7 +171,6 @@ export default function PlayoffsPage() {
         `)
         .eq('playoff_round_id', roundData.id);
 
-      // Transform picks
       const transformedPicks = (picksData || []).map((p: any) => ({
         ...p,
         team: Array.isArray(p.team) ? p.team[0] : p.team,
@@ -201,11 +198,62 @@ export default function PlayoffsPage() {
     loadData();
   }, [supabase]);
 
-  const handlePick = async (gameId: string, teamId: string) => {
+  const handlePick = async (gameId: string, teamId: string | null) => {
     if (!round || !participant || saving) return;
 
-    const nextPickPosition = myPicks.length + 1;
+    // If teamId is null, we're unpicking - use DELETE instead
+    if (teamId === null) {
+      const pickToDelete = myPicks.find(p => p.game_id === gameId);
+      if (!pickToDelete) return;
 
+      setSaving(true);
+      setError(null);
+
+      try {
+        const res = await fetch(`/api/playoffs/picks?pickId=${pickToDelete.id}`, {
+          method: 'DELETE',
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || 'Failed to delete pick');
+        } else {
+          // Reload picks after deletion
+          const { data: picksData } = await supabase
+            .from('playoff_picks_v2')
+            .select(`
+              id,
+              playoff_round_id,
+              profile_id,
+              game_id,
+              team_id,
+              pick_position,
+              team:teams(id, name, short_name, abbreviation, color_primary, logo),
+              game:games(id, game_utc)
+            `)
+            .eq('playoff_round_id', round.id);
+
+          const transformedPicks = (picksData || []).map((p: any) => ({
+            ...p,
+            team: Array.isArray(p.team) ? p.team[0] : p.team,
+            game: Array.isArray(p.game) ? p.game[0] : p.game,
+          }));
+
+          setAllPicks(transformedPicks);
+          setMyPicks(transformedPicks.filter(p => p.profile_id === participant.profile_id));
+        }
+      } catch {
+        setError('Network error');
+      }
+
+      setSaving(false);
+      return;
+    }
+
+    // Normal pick flow
+    const nextPickPosition = myPicks.length + 1;
+    
     setSaving(true);
     setError(null);
 
@@ -251,7 +299,6 @@ export default function PlayoffsPage() {
     setSaving(false);
   };
 
-  // Check if a pick is unlocked for a user
   const isPickUnlockedForUser = (participantObj: Participant, pickPosition: number): boolean => {
     if (!round || !schedule.length) return false;
     const draftComplete = isDraftComplete(schedule, now);
@@ -259,7 +306,6 @@ export default function PlayoffsPage() {
     return isPickUnlocked(schedule, participantObj.seed, pickPosition, now);
   };
 
-  // Check if game has started/locked
   const isGameLocked = (pick: PlayoffPick): boolean => {
     if (!pick.game?.game_utc) return false;
     return new Date(pick.game.game_utc) <= now;
@@ -288,7 +334,6 @@ export default function PlayoffsPage() {
   const draftComplete = schedule.length > 0 && isDraftComplete(schedule, now);
   const isPlayoffParticipant = participant && participant.seed <= 4;
   
-  // Track taken TEAMS (not games!) - multiple people can pick from same game
   const takenTeamIds = new Set(
     allPicks
       .filter(p => p.profile_id !== participant?.profile_id)
@@ -299,14 +344,12 @@ export default function PlayoffsPage() {
     return myPicks.find(p => p.game_id === gameId);
   };
 
-  // Get next unlock info for timer
   const nextUnlock = participant && schedule.length > 0 && !draftComplete 
     ? getNextUnlockForSeed(schedule, participant.seed, now) 
     : null;
 
   return (
     <AppShell>
-      {/* Main content - will be wrapped in DesktopLayout/MobileLayout by AppShell */}
       <Box sx={{ py: 3 }}>
         {/* Header */}
         <Box sx={{ mb: 3 }}>
@@ -381,6 +424,7 @@ export default function PlayoffsPage() {
           <EmojiEvents sx={{ color: 'warning.main' }} />
           Playoff Teams
         </Typography>
+
         <Box sx={{ 
           display: 'grid', 
           gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
@@ -419,12 +463,10 @@ export default function PlayoffsPage() {
                   )}
                 </Stack>
 
-                {/* Pick Progress */}
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
                   {participantPicks.length}/{participantObj.picks_available} picks made
                 </Typography>
 
-                {/* Picks Grid */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5 }}>
                   {[1, 2, 3, 4].map((position) => {
                     const pick = participantPicks.find(p => p.pick_position === position);
@@ -467,7 +509,6 @@ export default function PlayoffsPage() {
                       >
                         {pick ? (
                           gameLocked ? (
-                            // Game locked - show team logo
                             <Box
                               component="img"
                               src={pick.team?.logo}
@@ -480,14 +521,11 @@ export default function PlayoffsPage() {
                               }}
                             />
                           ) : (
-                            // Game not locked - show checkmark
                             <CheckCircle sx={{ fontSize: 28, color: '#4caf50' }} />
                           )
                         ) : unlocked ? (
-                          // Unlocked - ready to pick
                           <LockOpen sx={{ fontSize: 20, color: '#42a5f5' }} />
                         ) : (
-                          // Locked
                           <Lock sx={{ fontSize: 14, color: 'grey.600' }} />
                         )}
                       </Box>
@@ -503,6 +541,7 @@ export default function PlayoffsPage() {
         <Typography variant="h6" gutterBottom>
           Week {round.week} Games
         </Typography>
+
         <Stack spacing={2}>
           {games.map((game) => {
             const myPick = getMyPickForGame(game.id);
