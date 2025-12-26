@@ -28,11 +28,11 @@ type Game = {
 interface Props {
   game: Game;
   selectedTeamId?: string | null;
-  onSelectTeam: (gameId: string, teamId: string) => void;
+  onSelectTeam: (gameId: string, teamId: string | null) => void;
   disabled?: boolean;
   isLocked?: boolean;
-  isTaken?: boolean; // Not used anymore, but keeping for compatibility
-  takenTeamIds?: Set<string>; // NEW: Set of specific team IDs that are taken
+  isTaken?: boolean;
+  takenTeamIds?: Set<string>;
 }
 
 // Helper to determine if a color is light or dark
@@ -76,9 +76,20 @@ export default function PlayoffGameCard({
 
   const TeamRow = ({ team, isHome }: { team: Team; isHome: boolean }) => {
     const isSelected = selectedTeamId === team.id;
-    const isTeamTaken = takenTeamIds.has(team.id); // Check if THIS specific team is taken
+    const isTeamTaken = takenTeamIds.has(team.id);
     const score = isHome ? game.home_score : game.away_score;
     const canSelect = !isLocked && !gameStarted && !disabled && !isTeamTaken;
+    const canUnpick = !isLocked && !gameStarted && !disabled && isSelected;
+
+    const handleClick = () => {
+      if (canUnpick) {
+        // Unpick by passing null as teamId
+        onSelectTeam(game.id, null);
+      } else if (canSelect) {
+        // Pick this team
+        onSelectTeam(game.id, team.id);
+      }
+    };
 
     // Determine background color
     const getBgColor = () => {
@@ -100,18 +111,19 @@ export default function PlayoffGameCard({
 
     return (
       <Box
-        onClick={() => canSelect && onSelectTeam(game.id, team.id)}
+        onClick={handleClick}
         sx={{
           p: 1.5,
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
-          cursor: canSelect ? 'pointer' : 'default',
+          cursor: (canSelect || canUnpick) ? 'pointer' : 'default',
           opacity: isTeamTaken ? 0.45 : (selectedTeamId && !isSelected) ? 0.5 : 1,
           bgcolor: bgColor,
           transition: 'all 0.2s ease',
-          '&:hover': canSelect ? {
+          '&:hover': (canSelect || canUnpick) ? {
             bgcolor: isSelected ? bgColor : 'action.hover',
+            opacity: isSelected ? 0.9 : 1,
           } : {},
         }}
       >
