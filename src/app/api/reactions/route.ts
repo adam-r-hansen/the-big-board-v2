@@ -22,23 +22,29 @@ export async function POST(request: NextRequest) {
     // Upsert reaction (insert or update if exists)
     const { data, error } = await supabase
       .from('reactions_v2')
-      .upsert({
-        pick_id,
-        profile_id: user.id,
-        emoji,
-      }, {
-        onConflict: 'pick_id,profile_id'
-      })
+      .upsert(
+        {
+          pick_id,
+          profile_id: user.id,
+          emoji,
+        },
+        {
+          onConflict: 'pick_id,profile_id',
+          ignoreDuplicates: false,
+        }
+      )
       .select()
       .single();
 
     if (error) {
+      console.error('Reaction upsert error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, reaction: data });
 
   } catch (error: any) {
+    console.error('Reaction POST error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -67,12 +73,14 @@ export async function DELETE(request: NextRequest) {
       .eq('profile_id', user.id);
 
     if (error) {
+      console.error('Reaction delete error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
+    console.error('Reaction DELETE error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
