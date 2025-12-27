@@ -198,22 +198,26 @@ export default function MobileLayout({ children }: Props) {
     setAnyGamesLocked(!!lockedGames && lockedGames.length > 0);
 
     if (isPlayoffs) {
-      // Load playoff picks instead of regular picks - exclude non_playoff rounds
-      const { data: roundData } = await supabase
+      // Load playoff picks - get ALL rounds for this week (semifinal + non_playoff)
+      const { data: roundsData } = await supabase
         .from('playoff_rounds_v2')
         .select('id, draft_start_time, round_type, week')
         .eq('league_season_id', leagueId)
-        .eq('week', weekToLoad)
-        .in('round_type', ['semifinal', 'championship'])
-        .limit(1)
-        .maybeSingle();
+        .eq('week', weekToLoad);
 
-      if (roundData) {
-        setPlayoffWeek(roundData.week);
-        setDraftStartTime(roundData.draft_start_time ? new Date(roundData.draft_start_time) : null);
-        setRoundType(roundData.round_type as 'semifinal' | 'championship');
+      const roundIds = (roundsData || []).map(r => r.id);
 
-        // Load my playoff picks
+      if (roundIds.length > 0) {
+        // Use the first round for draft timing info (should be semifinal/championship)
+        const mainRound = roundsData?.find(r => r.round_type === 'semifinal' || r.round_type === 'championship');
+        
+        if (mainRound) {
+          setPlayoffWeek(mainRound.week);
+          setDraftStartTime(mainRound.draft_start_time ? new Date(mainRound.draft_start_time) : null);
+          setRoundType(mainRound.round_type as 'semifinal' | 'championship');
+        }
+
+        // Load my playoff picks from ALL rounds
         const { data: myPicksData } = await supabase
           .from('playoff_picks_v2')
           .select(`
@@ -226,7 +230,7 @@ export default function MobileLayout({ children }: Props) {
             team:teams(id, name, short_name, abbreviation, color_primary, logo),
             game:games(id, game_utc, status)
           `)
-          .eq('playoff_round_id', roundData.id)
+          .in('playoff_round_id', roundIds)
           .eq('profile_id', user.id);
 
         const transformedMyPicks = (myPicksData || []).map((p: any) => ({
@@ -242,7 +246,7 @@ export default function MobileLayout({ children }: Props) {
         const playoffPoints = transformedMyPicks.reduce((sum, p) => sum + (p.points || 0), 0);
         setWeekPoints(playoffPoints);
 
-        // Load league playoff picks
+        // Load league playoff picks from ALL rounds
         const { data: leaguePicksData } = await supabase
           .from('playoff_picks_v2')
           .select(`
@@ -256,7 +260,7 @@ export default function MobileLayout({ children }: Props) {
             game:games(id, game_utc, status),
             profile:profiles(display_name, profile_color)
           `)
-          .eq('playoff_round_id', roundData.id)
+          .in('playoff_round_id', roundIds)
           .neq('profile_id', user.id);
 
         const transformedLeaguePicks = (leaguePicksData || []).map((p: any) => ({
@@ -274,26 +278,28 @@ export default function MobileLayout({ children }: Props) {
 
         setLeaguePlayoffPicks(lockedLeaguePicks);
 
-        // Load playoff participants for LEAGUE tab
-        const { data: participantsData } = await supabase
-          .from('playoff_participants_v2')
-          .select(`
-            id,
-            profile_id,
-            seed,
-            picks_available,
-            profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
-          `)
-          .eq('playoff_round_id', roundData.id)
-          .lte('seed', 4)
-          .order('seed', { ascending: true });
+        // Load playoff participants for LEAGUE tab - only for main playoff round
+        if (mainRound) {
+          const { data: participantsData } = await supabase
+            .from('playoff_participants_v2')
+            .select(`
+              id,
+              profile_id,
+              seed,
+              picks_available,
+              profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
+            `)
+            .eq('playoff_round_id', mainRound.id)
+            .lte('seed', 4)
+            .order('seed', { ascending: true });
 
-        const transformedParticipants = (participantsData || []).map((p: any) => ({
-          ...p,
-          profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
-        }));
+          const transformedParticipants = (participantsData || []).map((p: any) => ({
+            ...p,
+            profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+          }));
 
-        setPlayoffParticipants(transformedParticipants);
+          setPlayoffParticipants(transformedParticipants);
+        }
       }
 
       // Clear regular picks
