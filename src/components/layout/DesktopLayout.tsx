@@ -153,18 +153,17 @@ export default function DesktopLayout({ children }: Props) {
     let weekTotal = 0;
 
     if (playoffsActive) {
-      // Load playoff picks - exclude non_playoff rounds
-      const { data: roundData } = await supabase
+      // Load playoff picks - get ALL rounds for this week (semifinal + non_playoff)
+      const { data: roundsData } = await supabase
         .from('playoff_rounds_v2')
-        .select('id, week')
+        .select('id, week, round_type')
         .eq('league_season_id', leagueId)
-        .eq('week', weekToLoad)
-        .in('round_type', ['semifinal', 'championship'])
-        .limit(1)
-        .maybeSingle();
+        .eq('week', weekToLoad);
 
-      if (roundData) {
-        // Load my playoff picks
+      const roundIds = (roundsData || []).map(r => r.id);
+
+      if (roundIds.length > 0) {
+        // Load my playoff picks from ALL rounds
         const { data: myPicksData } = await supabase
           .from('playoff_picks_v2')
           .select(`
@@ -177,7 +176,7 @@ export default function DesktopLayout({ children }: Props) {
             team:teams(short_name, abbreviation, color_primary, logo),
             game:games(status, home_team, away_team, home_score, away_score, game_utc)
           `)
-          .eq('playoff_round_id', roundData.id)
+          .in('playoff_round_id', roundIds)
           .eq('profile_id', user.id);
 
         const transformedMyPicks = (myPicksData || []).map((p: any) => ({
@@ -190,7 +189,7 @@ export default function DesktopLayout({ children }: Props) {
         setPlayoffPicks(transformedMyPicks);
         weekTotal = transformedMyPicks.reduce((sum: number, p: PlayoffPick) => sum + p.points, 0);
 
-        // Load league playoff picks
+        // Load league playoff picks from ALL rounds
         const { data: leaguePicksData } = await supabase
           .from('playoff_picks_v2')
           .select(`
@@ -204,7 +203,7 @@ export default function DesktopLayout({ children }: Props) {
             game:games(status, home_team, away_team, home_score, away_score, game_utc),
             profile:profiles(display_name, profile_color)
           `)
-          .eq('playoff_round_id', roundData.id)
+          .in('playoff_round_id', roundIds)
           .neq('profile_id', user.id);
 
         const transformedLeaguePicks = (leaguePicksData || []).map((p: any) => ({
