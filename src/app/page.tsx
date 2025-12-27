@@ -261,7 +261,7 @@ export default function Home() {
       activeLeague={activeLeague}
       onLeagueChange={handleLeagueChange}
     >
-      <Box sx={{ flexGrow: 1, p: 3 }}>
+      <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, maxWidth: isPlayoffs ? '1400px' : '100%', mx: 'auto' }}>
         {/* Season Progress */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
