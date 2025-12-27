@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress } from '@mui/material';
-import { EmojiEvents, TrendingUp, CalendarMonth, People, SportsFootball, Lock, LockOpen, CheckCircle } from '@mui/icons-material';
+import { EmojiEvents, TrendingUp, CalendarMonth, People, SportsFootball } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 import AppShell from '@/components/layout/AppShell';
 import Standings from '@/components/layout/Standings';
-import { isPickUnlocked, isDraftComplete, generateUnlockSchedule } from '@/lib/playoffs/unlockSchedule';
+import PlayoffBracket from '@/components/playoffs/PlayoffBracket';
 import type { User } from '@supabase/supabase-js';
 
 type LeagueInfo = {
@@ -32,6 +32,7 @@ type Team = {
 type Game = {
   id: string;
   game_utc: string;
+  status: string;
 };
 
 type PlayoffPick = {
@@ -40,6 +41,7 @@ type PlayoffPick = {
   team_id: string;
   pick_position: number;
   game_id: string;
+  points: number;
   team?: Team;
   game?: Game;
 };
@@ -72,10 +74,8 @@ export default function Home() {
   // Playoff data
   const [playoffParticipants, setPlayoffParticipants] = useState<PlayoffParticipant[]>([]);
   const [playoffPicks, setPlayoffPicks] = useState<PlayoffPick[]>([]);
-  const [draftStartTime, setDraftStartTime] = useState<Date | null>(null);
   const [roundType, setRoundType] = useState<'semifinal' | 'championship'>('semifinal');
   const [playoffWeek, setPlayoffWeek] = useState<number>(17);
-  const [now] = useState(new Date());
 
   const supabase = createClient();
 
@@ -133,44 +133,48 @@ export default function Home() {
 
             // If playoffs are active, load playoff data
             if (playoffsActive) {
-              // Look for an active playoff round (try latest week first, then week 17)
-              const { data: roundData } = await supabase
+              // Get ALL rounds for this week (semifinal + non_playoff)
+              const { data: roundsData } = await supabase
                 .from('playoff_rounds_v2')
-                .select('id, draft_start_time, round_type, week')
+                .select('id, round_type, week')
                 .eq('league_season_id', active.id)
                 .in('week', [17, 18])
-                .order('week', { ascending: false })
-                .limit(1)
-                .single();
+                .order('week', { ascending: false });
 
-              if (roundData) {
-                setPlayoffWeek(roundData.week);
-                setDraftStartTime(roundData.draft_start_time ? new Date(roundData.draft_start_time) : null);
-                setRoundType(roundData.round_type as 'semifinal' | 'championship');
+              if (roundsData && roundsData.length > 0) {
+                // Use the main playoff round for metadata
+                const mainRound = roundsData.find(r => r.round_type === 'semifinal' || r.round_type === 'championship');
+                if (mainRound) {
+                  setPlayoffWeek(mainRound.week);
+                  setRoundType(mainRound.round_type as 'semifinal' | 'championship');
+                }
 
-                // Load playoff participants
-                const { data: participantsData } = await supabase
-                  .from('playoff_participants_v2')
-                  .select(`
-                    id,
-                    profile_id,
-                    seed,
-                    picks_available,
-                    profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
-                  `)
-                  .eq('playoff_round_id', roundData.id)
-                  .lte('seed', 4)
-                  .order('seed', { ascending: true });
+                const roundIds = roundsData.map(r => r.id);
 
-                // Transform to match type (profile comes as array from Supabase)
-                const transformedParticipants = (participantsData || []).map((p: any) => ({
-                  ...p,
-                  profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
-                }));
+                // Load playoff participants (only seeds 1-4 from main round)
+                if (mainRound) {
+                  const { data: participantsData } = await supabase
+                    .from('playoff_participants_v2')
+                    .select(`
+                      id,
+                      profile_id,
+                      seed,
+                      picks_available,
+                      profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
+                    `)
+                    .eq('playoff_round_id', mainRound.id)
+                    .lte('seed', 4)
+                    .order('seed', { ascending: true });
 
-                setPlayoffParticipants(transformedParticipants);
+                  const transformedParticipants = (participantsData || []).map((p: any) => ({
+                    ...p,
+                    profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+                  }));
 
-                // Load all playoff picks with game data
+                  setPlayoffParticipants(transformedParticipants);
+                }
+
+                // Load all playoff picks from ALL rounds with game data and points
                 const { data: picksData } = await supabase
                   .from('playoff_picks_v2')
                   .select(`
@@ -179,16 +183,17 @@ export default function Home() {
                     team_id,
                     pick_position,
                     game_id,
+                    points,
                     team:teams(id, name, short_name, abbreviation, color_primary, logo),
-                    game:games(id, game_utc)
+                    game:games(id, game_utc, status)
                   `)
-                  .eq('playoff_round_id', roundData.id);
+                  .in('playoff_round_id', roundIds);
 
-                // Transform to match type (team and game come as arrays from Supabase)
                 const transformedPicks = (picksData || []).map((p: any) => ({
                   ...p,
                   team: Array.isArray(p.team) ? p.team[0] : p.team,
                   game: Array.isArray(p.game) ? p.game[0] : p.game,
+                  points: p.points || 0,
                 }));
 
                 setPlayoffPicks(transformedPicks);
@@ -249,21 +254,6 @@ export default function Home() {
   const weeksRemaining = Math.max(0, regularSeasonWeeks - currentWeek);
   const progressPercent = Math.min(100, (currentWeek / regularSeasonWeeks) * 100);
 
-  // Check if a pick is unlocked for a user
-  const isPickUnlockedForUser = (participant: PlayoffParticipant, pickPosition: number): boolean => {
-    if (!draftStartTime) return false;
-    const schedule = generateUnlockSchedule(playoffWeek as 17 | 18, draftStartTime, roundType);
-    const draftComplete = isDraftComplete(schedule, now);
-    if (draftComplete) return true;
-    return isPickUnlocked(schedule, participant.seed, pickPosition, now);
-  };
-
-  // Check if game has started/locked
-  const isGameLocked = (pick: PlayoffPick): boolean => {
-    if (!pick.game?.game_utc) return false;
-    return new Date(pick.game.game_utc) <= now;
-  };
-
   return (
     <AppShell 
       userEmail={user?.email} 
@@ -291,134 +281,20 @@ export default function Home() {
           </Typography>
         </Paper>
 
-        {/* Playoff Participants (if playoffs active) */}
+        {/* Playoff Bracket (if playoffs active) */}
         {isPlayoffs && playoffParticipants.length > 0 && (
-          <>
-            <Typography variant="h5" gutterBottom sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <EmojiEvents sx={{ color: 'warning.main' }} />
-              Playoff Teams
-            </Typography>
-            <Box sx={{ 
-              display: 'grid', 
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
-              gap: 2,
-              mb: 4
-            }}>
-              {playoffParticipants.map((participant) => {
-                const participantPicks = playoffPicks.filter(p => p.profile_id === participant.profile_id);
-                const isCurrentUser = participant.profile_id === user?.id;
-
-                return (
-                  <Paper 
-                    key={participant.id}
-                    elevation={isCurrentUser ? 4 : 2}
-                    sx={{ 
-                      p: 2, 
-                      border: 2,
-                      borderColor: isCurrentUser ? 'primary.main' : 'divider',
-                      background: isCurrentUser ? 'linear-gradient(135deg, rgba(25, 118, 210, 0.1) 0%, rgba(66, 165, 245, 0.05) 100%)' : 'background.paper',
-                    }}
-                  >
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                      <Chip 
-                        label={`#${participant.seed}`} 
-                        size="small" 
-                        color={isCurrentUser ? 'primary' : 'default'}
-                        sx={{ fontWeight: 700 }}
-                      />
-                      <Typography variant="subtitle1" fontWeight={600} sx={{ flexGrow: 1 }} noWrap>
-                        {participant.profile?.display_name || participant.profile?.email?.split('@')[0]}
-                      </Typography>
-                      {isCurrentUser && (
-                        <Typography variant="caption" color="primary.main" fontWeight={600}>
-                          YOU
-                        </Typography>
-                      )}
-                    </Stack>
-
-                    {/* Pick Progress */}
-                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                      {participantPicks.length}/{participant.picks_available} picks made
-                    </Typography>
-
-                    {/* Picks Grid */}
-                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5 }}>
-                      {[1, 2, 3, 4].map((position) => {
-                        const pick = participantPicks.find(p => p.pick_position === position);
-                        const unlocked = isCurrentUser && !pick && isPickUnlockedForUser(participant, position);
-                        const gameLocked = pick ? isGameLocked(pick) : false;
-                        
-                        return (
-                          <Box
-                            key={position}
-                            sx={{
-                              aspectRatio: '1',
-                              borderRadius: 1,
-                              bgcolor: pick 
-                                ? (gameLocked ? 'background.paper' : '#1e3a1e')
-                                : unlocked 
-                                  ? '#1e2a3a' 
-                                  : 'grey.800',
-                              border: pick 
-                                ? (gameLocked ? `1px solid ${pick.team?.color_primary}` : '1px solid #4caf50')
-                                : unlocked
-                                  ? '2px solid #42a5f5'
-                                  : '1px solid',
-                              borderColor: pick 
-                                ? (gameLocked ? pick.team?.color_primary : '#4caf50')
-                                : unlocked 
-                                  ? '#42a5f5' 
-                                  : 'grey.700',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              position: 'relative',
-                              overflow: 'hidden',
-                              boxShadow: unlocked ? '0 0 12px rgba(66, 165, 245, 0.4)' : 'none',
-                              animation: unlocked ? 'pulse 2s ease-in-out infinite' : 'none',
-                              '@keyframes pulse': {
-                                '0%, 100%': { opacity: 1, transform: 'scale(1)' },
-                                '50%': { opacity: 0.85, transform: 'scale(1.02)' },
-                              },
-                            }}
-                          >
-                            {pick ? (
-                              gameLocked ? (
-                                // Game locked - show team logo
-                                <Box
-                                  component="img"
-                                  src={pick.team?.logo}
-                                  alt={pick.team?.abbreviation}
-                                  sx={{ 
-                                    width: '75%', 
-                                    height: '75%', 
-                                    objectFit: 'contain',
-                                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
-                                  }}
-                                />
-                              ) : (
-                                // Game not locked - show checkmark
-                                <CheckCircle sx={{ fontSize: 28, color: '#4caf50' }} />
-                              )
-                            ) : unlocked ? (
-                              // Unlocked - ready to pick
-                              <LockOpen sx={{ fontSize: 20, color: '#42a5f5' }} />
-                            ) : (
-                              // Locked
-                              <Lock sx={{ fontSize: 14, color: 'grey.600' }} />
-                            )}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Paper>
-                );
-              })}
-            </Box>
-          </>
+          <Box sx={{ mb: 4 }}>
+            <PlayoffBracket
+              participants={playoffParticipants}
+              picks={playoffPicks}
+              currentUserId={user?.id || null}
+              week={playoffWeek}
+              roundType={roundType}
+            />
+          </Box>
         )}
 
-        {/* Regular Stats (shown for non-playoff leagues) */}
+        {/* Regular Stats (shown for non-playoff weeks) */}
         {!isPlayoffs && (
           <>
             <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
@@ -474,8 +350,8 @@ export default function Home() {
           </>
         )}
 
-        {/* Standings */}
-        <Standings />
+        {/* Standings - hide during playoffs */}
+        {!isPlayoffs && <Standings />}
       </Box>
     </AppShell>
   );
