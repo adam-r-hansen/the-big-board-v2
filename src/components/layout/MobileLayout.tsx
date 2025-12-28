@@ -308,11 +308,11 @@ export default function MobileLayout({ children }: Props) {
       setWrinklePicks([]);
       setLeagueWrinklePicks([]);
     } else {
-      // Load regular picks
+      // Load regular picks - FIXED: Remove status from direct query
       const { data: picks } = await supabase
         .from('picks_v2')
         .select(`
-          id, team_id, week, points, status,
+          id, team_id, week, points,
           team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
           game:games(status, game_utc)
         `)
@@ -324,6 +324,7 @@ export default function MobileLayout({ children }: Props) {
         ...p,
         team: Array.isArray(p.team) ? p.team[0] : p.team,
         game: Array.isArray(p.game) ? p.game[0] : p.game,
+        status: (Array.isArray(p.game) ? p.game[0]?.status : p.game?.status) || 'Scheduled',
       }));
 
       setWeekPicks(transformedPicks);
@@ -331,11 +332,11 @@ export default function MobileLayout({ children }: Props) {
       const weekTotal = transformedPicks.reduce((sum, p) => sum + (p.points || 0), 0);
       setWeekPoints(weekTotal);
 
-      // Load league picks
+      // Load league picks - FIXED: Remove status from direct query
       const { data: allPicks } = await supabase
         .from('picks_v2')
         .select(`
-          id, team_id, week, points, status, profile_id,
+          id, team_id, week, points, profile_id,
           team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
           game:games(status, game_utc),
           profile:profiles(display_name, profile_color)
@@ -349,6 +350,7 @@ export default function MobileLayout({ children }: Props) {
         team: Array.isArray(p.team) ? p.team[0] : p.team,
         game: Array.isArray(p.game) ? p.game[0] : p.game,
         profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        status: (Array.isArray(p.game) ? p.game[0]?.status : p.game?.status) || 'Scheduled',
       }));
 
       setLeaguePicks(transformedLeaguePicks);
