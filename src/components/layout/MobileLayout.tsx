@@ -353,7 +353,12 @@ export default function MobileLayout({ children }: Props) {
         status: (Array.isArray(p.game) ? p.game[0]?.status : p.game?.status) || 'Scheduled',
       }));
 
-      setLeaguePicks(transformedLeaguePicks);
+      // FIXED: Filter to show only locked league picks
+      const lockedLeaguePicks = transformedLeaguePicks.filter((p: Pick) =>
+        p.game?.game_utc ? new Date(p.game.game_utc) <= now : false
+      );
+
+      setLeaguePicks(lockedLeaguePicks);
 
       // Load wrinkle picks - FIXED: Join through wrinkles_v2 table
       const { data: myWrinkles } = await supabase
@@ -415,7 +420,12 @@ export default function MobileLayout({ children }: Props) {
         };
       });
 
-      setLeagueWrinklePicks(transformedLeagueWrinkles);
+      // FIXED: Filter to show only locked league wrinkle picks
+      const lockedLeagueWrinkles = transformedLeagueWrinkles.filter((p: WrinklePick) =>
+        p.game?.game_utc ? new Date(p.game.game_utc) <= now : false
+      );
+
+      setLeagueWrinklePicks(lockedLeagueWrinkles);
 
       // Clear playoff picks
       setMyPlayoffPicks([]);
