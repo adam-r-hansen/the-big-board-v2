@@ -353,45 +353,65 @@ export default function MobileLayout({ children }: Props) {
 
       setLeaguePicks(transformedLeaguePicks);
 
-      // Load wrinkle picks
+      // Load wrinkle picks - FIXED: Join through wrinkles_v2 table
       const { data: myWrinkles } = await supabase
         .from('wrinkle_picks_v2')
         .select(`
-          id, team_id, wrinkle_type, points, status,
-          team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
-          game:games(status, game_utc)
+          id, team_id, points, profile_id,
+          wrinkle:wrinkles_v2!inner(name, kind, week, league_season_id, game:games(status, game_utc)),
+          team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo)
         `)
-        .eq('league_season_id', leagueId)
-        .eq('profile_id', user.id)
-        .eq('week', weekToLoad);
+        .eq('wrinkles_v2.league_season_id', leagueId)
+        .eq('wrinkles_v2.week', weekToLoad)
+        .eq('profile_id', user.id);
 
-      const transformedWrinkles = (myWrinkles || []).map((p: any) => ({
-        ...p,
-        team: Array.isArray(p.team) ? p.team[0] : p.team,
-        game: Array.isArray(p.game) ? p.game[0] : p.game,
-      }));
+      // Transform to match WrinklePick type
+      const transformedWrinkles = (myWrinkles || []).map((p: any) => {
+        const wrinkle = Array.isArray(p.wrinkle) ? p.wrinkle[0] : p.wrinkle;
+        const game = wrinkle?.game ? (Array.isArray(wrinkle.game) ? wrinkle.game[0] : wrinkle.game) : null;
+        
+        return {
+          id: p.id,
+          team_id: p.team_id,
+          wrinkle_type: wrinkle?.kind || 'bonus',
+          points: p.points || 0,
+          status: game?.status || 'Scheduled',
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: game,
+        };
+      });
 
       setWrinklePicks(transformedWrinkles);
 
-      // Load league wrinkle picks
+      // Load league wrinkle picks - FIXED: Join through wrinkles_v2 table
       const { data: allWrinkles } = await supabase
         .from('wrinkle_picks_v2')
         .select(`
-          id, team_id, wrinkle_type, points, status, profile_id,
+          id, team_id, points, profile_id,
+          wrinkle:wrinkles_v2!inner(name, kind, week, league_season_id, game:games(status, game_utc)),
           team:teams(id, name, short_name, abbreviation, color_primary, color_secondary, logo),
-          game:games(status, game_utc),
           profile:profiles(display_name, profile_color)
         `)
-        .eq('league_season_id', leagueId)
-        .eq('week', weekToLoad)
+        .eq('wrinkles_v2.league_season_id', leagueId)
+        .eq('wrinkles_v2.week', weekToLoad)
         .neq('profile_id', user.id);
 
-      const transformedLeagueWrinkles = (allWrinkles || []).map((p: any) => ({
-        ...p,
-        team: Array.isArray(p.team) ? p.team[0] : p.team,
-        game: Array.isArray(p.game) ? p.game[0] : p.game,
-        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
-      }));
+      // Transform to match WrinklePick type
+      const transformedLeagueWrinkles = (allWrinkles || []).map((p: any) => {
+        const wrinkle = Array.isArray(p.wrinkle) ? p.wrinkle[0] : p.wrinkle;
+        const game = wrinkle?.game ? (Array.isArray(wrinkle.game) ? wrinkle.game[0] : wrinkle.game) : null;
+        
+        return {
+          id: p.id,
+          team_id: p.team_id,
+          wrinkle_type: wrinkle?.kind || 'bonus',
+          points: p.points || 0,
+          status: game?.status || 'Scheduled',
+          team: Array.isArray(p.team) ? p.team[0] : p.team,
+          game: game,
+          profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        };
+      });
 
       setLeagueWrinklePicks(transformedLeagueWrinkles);
 
