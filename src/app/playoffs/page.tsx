@@ -307,11 +307,11 @@ export default function PlayoffsPage() {
   }
 
   // Build taken teams set (only for championship/semifinal rounds)
-  const takenTeams = new Set<string>();
+  const takenTeamIds = new Set<string>();
   if (!isOpenPicks) {
     allPicks.forEach(pick => {
       if (pick.profile_id !== userId) {
-        takenTeams.add(pick.team_id);
+        takenTeamIds.add(pick.team_id);
       }
     });
   }
@@ -475,7 +475,7 @@ export default function PlayoffsPage() {
                 game={game}
                 selectedTeamId={selectedTeamId}
                 onSelectTeam={handleSelectTeam}
-                takenTeams={takenTeams}
+                takenTeamIds={takenTeamIds}
                 disabled={saving}
               />
             );
