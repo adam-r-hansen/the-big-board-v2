@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress } from '@mui/material';
+import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress, Alert } from '@mui/material';
 import { EmojiEvents, TrendingUp, CalendarMonth, People, SportsFootball } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 import AppShell from '@/components/layout/AppShell';
@@ -57,6 +57,13 @@ type PlayoffParticipant = {
   };
 };
 
+type PlayoffRoundData = {
+  participants: PlayoffParticipant[];
+  picks: PlayoffPick[];
+  week: number;
+  roundType: 'semifinal' | 'championship' | 'consolation';
+};
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,11 +78,10 @@ export default function Home() {
   const [seasonPoints, setSeasonPoints] = useState(0);
   const [isPlayoffs, setIsPlayoffs] = useState(false);
   
-  // Playoff data
-  const [playoffParticipants, setPlayoffParticipants] = useState<PlayoffParticipant[]>([]);
-  const [playoffPicks, setPlayoffPicks] = useState<PlayoffPick[]>([]);
-  const [roundType, setRoundType] = useState<'semifinal' | 'championship'>('semifinal');
-  const [playoffWeek, setPlayoffWeek] = useState<number>(17);
+  // Playoff data - now supporting multiple rounds
+  const [championshipData, setChampionshipData] = useState<PlayoffRoundData | null>(null);
+  const [consolationData, setConsolationData] = useState<PlayoffRoundData | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   const supabase = createClient();
 
@@ -118,64 +124,59 @@ export default function Home() {
             setActiveLeague(active);
             localStorage.setItem('activeLeagueSeasonId', active.id);
 
-            // Check if we're in playoffs (Week 17+)
-            const { data: games } = await supabase
+            // Check current week
+            const { data: nextGame } = await supabase
               .from('games')
               .select('week')
               .eq('season', active.season)
-              .order('week', { ascending: false })
-              .limit(1);
+              .gte('game_utc', new Date().toISOString())
+              .order('game_utc', { ascending: true })
+              .limit(1)
+              .single();
 
-            const latestWeek = games?.[0]?.week || 17;
+            const latestWeek = nextGame?.week || 18;
             setCurrentWeek(latestWeek);
             const playoffsActive = latestWeek >= 17 && active.playoffs_enabled;
             setIsPlayoffs(playoffsActive);
 
-            // If playoffs are active, load playoff data
+            let debugMsg = `Current week: ${latestWeek}, Playoffs active: ${playoffsActive}`;
+
+            // If playoffs are active, load playoff data for BOTH championship and consolation
             if (playoffsActive) {
-              // Get ALL rounds for this week (semifinal + non_playoff)
-              const { data: roundsData } = await supabase
+              // Get championship round (Week 18)
+              const { data: championshipRound, error: champError } = await supabase
                 .from('playoff_rounds_v2')
                 .select('id, round_type, week')
                 .eq('league_season_id', active.id)
-                .in('week', [17, 18])
-                .order('week', { ascending: false });
+                .eq('week', 18)
+                .eq('round_type', 'championship')
+                .single();
 
-              if (roundsData && roundsData.length > 0) {
-                // Use the main playoff round for metadata
-                const mainRound = roundsData.find(r => r.round_type === 'semifinal' || r.round_type === 'championship');
-                if (mainRound) {
-                  setPlayoffWeek(mainRound.week);
-                  setRoundType(mainRound.round_type as 'semifinal' | 'championship');
-                }
+              debugMsg += `\nChampionship round found: ${!!championshipRound}, Error: ${champError?.message || 'none'}`;
 
-                const roundIds = roundsData.map(r => r.id);
+              if (championshipRound) {
+                // Load championship participants
+                const { data: champParticipants } = await supabase
+                  .from('playoff_participants_v2')
+                  .select(`
+                    id,
+                    profile_id,
+                    seed,
+                    picks_available,
+                    profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
+                  `)
+                  .eq('playoff_round_id', championshipRound.id)
+                  .order('seed', { ascending: true });
 
-                // Load playoff participants (only seeds 1-4 from main round)
-                if (mainRound) {
-                  const { data: participantsData } = await supabase
-                    .from('playoff_participants_v2')
-                    .select(`
-                      id,
-                      profile_id,
-                      seed,
-                      picks_available,
-                      profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
-                    `)
-                    .eq('playoff_round_id', mainRound.id)
-                    .lte('seed', 4)
-                    .order('seed', { ascending: true });
+                debugMsg += `\nChampionship participants: ${champParticipants?.length || 0}`;
 
-                  const transformedParticipants = (participantsData || []).map((p: any) => ({
-                    ...p,
-                    profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
-                  }));
+                const transformedChampParticipants = (champParticipants || []).map((p: any) => ({
+                  ...p,
+                  profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+                }));
 
-                  setPlayoffParticipants(transformedParticipants);
-                }
-
-                // Load all playoff picks from ALL rounds with game data and points
-                const { data: picksData } = await supabase
+                // Load championship picks
+                const { data: champPicks } = await supabase
                   .from('playoff_picks_v2')
                   .select(`
                     id,
@@ -187,18 +188,91 @@ export default function Home() {
                     team:teams(id, name, short_name, abbreviation, color_primary, logo),
                     game:games(id, game_utc, status)
                   `)
-                  .in('playoff_round_id', roundIds);
+                  .eq('playoff_round_id', championshipRound.id);
 
-                const transformedPicks = (picksData || []).map((p: any) => ({
+                debugMsg += `\nChampionship picks: ${champPicks?.length || 0}`;
+
+                const transformedChampPicks = (champPicks || []).map((p: any) => ({
                   ...p,
                   team: Array.isArray(p.team) ? p.team[0] : p.team,
                   game: Array.isArray(p.game) ? p.game[0] : p.game,
                   points: p.points || 0,
                 }));
 
-                setPlayoffPicks(transformedPicks);
+                setChampionshipData({
+                  participants: transformedChampParticipants,
+                  picks: transformedChampPicks,
+                  week: 18,
+                  roundType: 'championship',
+                });
+              }
+
+              // Get consolation round (Week 18)
+              const { data: consolationRound, error: consolError } = await supabase
+                .from('playoff_rounds_v2')
+                .select('id, round_type, week')
+                .eq('league_season_id', active.id)
+                .eq('week', 18)
+                .eq('round_type', 'consolation')
+                .single();
+
+              debugMsg += `\nConsolation round found: ${!!consolationRound}, Error: ${consolError?.message || 'none'}`;
+
+              if (consolationRound) {
+                // Load consolation participants
+                const { data: consolParticipants } = await supabase
+                  .from('playoff_participants_v2')
+                  .select(`
+                    id,
+                    profile_id,
+                    seed,
+                    picks_available,
+                    profile:profiles!playoff_participants_v2_profile_id_fkey(display_name, email)
+                  `)
+                  .eq('playoff_round_id', consolationRound.id)
+                  .order('seed', { ascending: true });
+
+                debugMsg += `\nConsolation participants: ${consolParticipants?.length || 0}`;
+
+                const transformedConsolParticipants = (consolParticipants || []).map((p: any) => ({
+                  ...p,
+                  profile: Array.isArray(p.profile) ? p.profile[0] : p.profile
+                }));
+
+                // Load consolation picks
+                const { data: consolPicks } = await supabase
+                  .from('playoff_picks_v2')
+                  .select(`
+                    id,
+                    profile_id,
+                    team_id,
+                    pick_position,
+                    game_id,
+                    points,
+                    team:teams(id, name, short_name, abbreviation, color_primary, logo),
+                    game:games(id, game_utc, status)
+                  `)
+                  .eq('playoff_round_id', consolationRound.id);
+
+                debugMsg += `\nConsolation picks: ${consolPicks?.length || 0}`;
+
+                const transformedConsolPicks = (consolPicks || []).map((p: any) => ({
+                  ...p,
+                  team: Array.isArray(p.team) ? p.team[0] : p.team,
+                  game: Array.isArray(p.game) ? p.game[0] : p.game,
+                  points: p.points || 0,
+                }));
+
+                setConsolationData({
+                  participants: transformedConsolParticipants,
+                  picks: transformedConsolPicks,
+                  week: 18,
+                  roundType: 'consolation',
+                });
               }
             }
+
+            setDebugInfo(debugMsg);
 
             // Load regular season stats
             const { data: standings } = await supabase
@@ -262,6 +336,13 @@ export default function Home() {
       onLeagueChange={handleLeagueChange}
     >
       <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, maxWidth: isPlayoffs ? '1400px' : '100%', mx: 'auto' }}>
+        {/* Debug Info (temporary) */}
+        {debugInfo && (
+          <Alert severity="info" sx={{ mb: 2, whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+            {debugInfo}
+          </Alert>
+        )}
+
         {/* Season Progress */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -281,15 +362,28 @@ export default function Home() {
           </Typography>
         </Paper>
 
-        {/* Playoff Bracket (if playoffs active) */}
-        {isPlayoffs && playoffParticipants.length > 0 && (
+        {/* Championship Bracket */}
+        {isPlayoffs && championshipData && (
           <Box sx={{ mb: 4 }}>
             <PlayoffBracket
-              participants={playoffParticipants}
-              picks={playoffPicks}
+              participants={championshipData.participants}
+              picks={championshipData.picks}
               currentUserId={user?.id || null}
-              week={playoffWeek}
-              roundType={roundType}
+              week={championshipData.week}
+              roundType={championshipData.roundType}
+            />
+          </Box>
+        )}
+
+        {/* Consolation Bracket (3rd Place) */}
+        {isPlayoffs && consolationData && (
+          <Box sx={{ mb: 4 }}>
+            <PlayoffBracket
+              participants={consolationData.participants}
+              picks={consolationData.picks}
+              currentUserId={user?.id || null}
+              week={consolationData.week}
+              roundType={consolationData.roundType}
             />
           </Box>
         )}
