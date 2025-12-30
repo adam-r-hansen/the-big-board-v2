@@ -128,7 +128,7 @@ export default function PlayoffBracket({ participants, picks, currentUserId, wee
 
   const getSubtitle = () => {
     if (roundType === 'semifinal') return 'Top 2 advance to Championship';
-    if (roundType === 'championship') return 'Top 2 advance to victory';
+    if (roundType === 'championship') return 'Winner takes all';
     if (roundType === 'consolation') return 'Winner claims 3rd place';
     return '';
   };
