@@ -10,10 +10,10 @@ import {
   Alert,
   Stack,
   Chip,
-  Button,
 } from '@mui/material';
 import { EmojiEvents, Lock, LockOpen, CheckCircle } from '@mui/icons-material';
 import AppShell from '@/components/layout/AppShell';
+import PlayoffGameCard from '@/components/playoffs/PlayoffGameCard';
 import { generateUnlockSchedule, isPickUnlocked, isDraftComplete, UnlockWindow } from '@/lib/playoffs/unlockSchedule';
 
 type Team = {
@@ -34,8 +34,8 @@ type Game = {
   away_score: number | null;
   game_utc: string;
   status: string;
-  home_team_data?: Team;
-  away_team_data?: Team;
+  home: Team;
+  away: Team;
 };
 
 type PlayoffPick = {
@@ -195,8 +195,8 @@ export default function PlayoffsPage() {
         .from('games')
         .select(`
           *,
-          home_team_data:teams!games_home_team_fkey(id, name, short_name, abbreviation, color_primary, logo),
-          away_team_data:teams!games_away_team_fkey(id, name, short_name, abbreviation, color_primary, logo)
+          home:teams!games_home_team_fkey(id, name, short_name, abbreviation, color_primary, logo),
+          away:teams!games_away_team_fkey(id, name, short_name, abbreviation, color_primary, logo)
         `)
         .eq('season', 2025)
         .eq('week', userRound.week)
@@ -204,8 +204,8 @@ export default function PlayoffsPage() {
 
       const transformedGames = (gamesData || []).map((g: any) => ({
         ...g,
-        home_team_data: Array.isArray(g.home_team_data) ? g.home_team_data[0] : g.home_team_data,
-        away_team_data: Array.isArray(g.away_team_data) ? g.away_team_data[0] : g.away_team_data,
+        home: Array.isArray(g.home) ? g.home[0] : g.home,
+        away: Array.isArray(g.away) ? g.away[0] : g.away,
       }));
 
       setGames(transformedGames);
@@ -216,19 +216,31 @@ export default function PlayoffsPage() {
     loadData();
   }, [supabase]);
 
-  const handleSelectTeam = async (gameId: string, teamId: string, pickPosition: number) => {
-    if (!round || !participant) return;
+  const handleSelectTeam = async (game: Game, teamId: string) => {
+    if (!round || !participant || saving) return;
 
     setSaving(true);
+
+    // Find next available pick position
+    const nextAvailablePosition = [1, 2, 3, 4].find(pos => 
+      !myPicks.find(p => p.pick_position === pos) && 
+      (isOpenPicks || draftComplete || isPickUnlocked(schedule, participant.seed, pos, now))
+    );
+
+    if (!nextAvailablePosition) {
+      alert('No available pick positions');
+      setSaving(false);
+      return;
+    }
 
     const res = await fetch('/api/playoffs/picks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         roundId: round.id,
-        gameId,
+        gameId: game.id,
         teamId,
-        pickPosition,
+        pickPosition: nextAvailablePosition,
       }),
     });
 
@@ -289,6 +301,16 @@ export default function PlayoffsPage() {
         <Alert severity="error">{error || 'No playoff data available'}</Alert>
       </AppShell>
     );
+  }
+
+  // Build taken teams set (only for championship/semifinal rounds)
+  const takenTeams = new Set<string>();
+  if (!isOpenPicks) {
+    allPicks.forEach(pick => {
+      if (pick.profile_id !== userId) {
+        takenTeams.add(pick.team_id);
+      }
+    });
   }
 
   return (
@@ -441,44 +463,18 @@ export default function PlayoffsPage() {
 
         <Stack spacing={2}>
           {games.map((game) => {
-            const gameLocked = new Date(game.game_utc) <= now;
             const myPickInGame = myPicks.find(p => p.game_id === game.id);
-
-            const nextAvailablePosition = participant ? 
-              [1, 2, 3, 4].find(pos => 
-                !myPicks.find(p => p.pick_position === pos) && 
-                (isOpenPicks || draftComplete || isPickUnlocked(schedule, participant.seed, pos, now))
-              ) : null;
+            const selectedTeamId = myPickInGame?.team_id;
 
             return (
-              <Paper key={game.id} sx={{ p: 2 }}>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Box sx={{ flexGrow: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(game.game_utc).toLocaleString()}
-                    </Typography>
-                    <Stack direction="row" spacing={3} sx={{ mt: 1 }}>
-                      <Button
-                        variant={myPickInGame?.team_id === game.away_team ? 'contained' : 'outlined'}
-                        onClick={() => nextAvailablePosition && handleSelectTeam(game.id, game.away_team, nextAvailablePosition)}
-                        disabled={saving || gameLocked || !nextAvailablePosition}
-                        sx={{ minWidth: 120 }}
-                      >
-                        {game.away_team_data?.short_name || 'Away'}
-                      </Button>
-                      <Button
-                        variant={myPickInGame?.team_id === game.home_team ? 'contained' : 'outlined'}
-                        onClick={() => nextAvailablePosition && handleSelectTeam(game.id, game.home_team, nextAvailablePosition)}
-                        disabled={saving || gameLocked || !nextAvailablePosition}
-                        sx={{ minWidth: 120 }}
-                      >
-                        {game.home_team_data?.short_name || 'Home'}
-                      </Button>
-                    </Stack>
-                  </Box>
-                  {gameLocked && <Lock color="disabled" />}
-                </Stack>
-              </Paper>
+              <PlayoffGameCard
+                key={game.id}
+                game={game}
+                selectedTeamId={selectedTeamId}
+                onSelectTeam={handleSelectTeam}
+                takenTeams={takenTeams}
+                disabled={saving}
+              />
             );
           })}
         </Stack>
