@@ -316,6 +316,26 @@ export default function PlayoffsPage() {
     });
   }
 
+  // TIEBREAKER LOGIC: Filter games based on seed and pick position
+  const isTiebreakerGame = (gameId: string) => round.tiebreaker_game_id === gameId;
+  const isHigherSeed = participant.seed === 1 || participant.seed === 3;
+  const nextPickPosition = [1, 2, 3, 4].find(pos => !myPicks.find(p => p.pick_position === pos));
+  const canSelectTiebreaker = isHigherSeed && nextPickPosition === 4;
+
+  // Filter games: hide tiebreaker from lower seeds, show only for higher seeds on 4th pick
+  const filteredGames = games.filter(game => {
+    if (!isTiebreakerGame(game.id)) return true; // Regular games always show
+    
+    // Tiebreaker game logic
+    if (isOpenPicks) {
+      // In consolation/non-playoff: only seed 3 can pick it as 4th pick
+      return participant.seed === 3 && nextPickPosition === 4;
+    } else {
+      // In championship/semifinal: only seed 1 can pick it as 4th pick
+      return isHigherSeed && nextPickPosition === 4;
+    }
+  });
+
   return (
     <AppShell>
       <Box sx={{ maxWidth: '1400px', mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -350,6 +370,13 @@ export default function PlayoffsPage() {
           <Alert severity="success" sx={{ mb: 3 }}>
             <CheckCircle sx={{ mr: 1 }} />
             All picks made! {!isOpenPicks && 'You can swap any pick once per hour until games lock.'}
+          </Alert>
+        )}
+
+        {/* Tiebreaker Info */}
+        {isHigherSeed && nextPickPosition === 4 && round.tiebreaker_game_id && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <strong>Tiebreaker Available:</strong> As seed #{participant.seed}, the Sunday night game is reserved for your 4th pick. This will be used to break ties.
           </Alert>
         )}
 
@@ -465,19 +492,35 @@ export default function PlayoffsPage() {
         </Typography>
 
         <Stack spacing={2}>
-          {games.map((game) => {
+          {filteredGames.map((game) => {
             const myPickInGame = myPicks.find(p => p.game_id === game.id);
             const selectedTeamId = myPickInGame?.team_id;
+            const isTiebreaker = isTiebreakerGame(game.id);
 
             return (
-              <PlayoffGameCard
-                key={game.id}
-                game={game}
-                selectedTeamId={selectedTeamId}
-                onSelectTeam={handleSelectTeam}
-                takenTeamIds={takenTeamIds}
-                disabled={saving}
-              />
+              <Box key={game.id} sx={{ position: 'relative' }}>
+                {isTiebreaker && (
+                  <Chip 
+                    label="TIEBREAKER" 
+                    color="warning" 
+                    size="small" 
+                    sx={{ 
+                      position: 'absolute', 
+                      top: 8, 
+                      right: 8, 
+                      zIndex: 10,
+                      fontWeight: 700 
+                    }} 
+                  />
+                )}
+                <PlayoffGameCard
+                  game={game}
+                  selectedTeamId={selectedTeamId}
+                  onSelectTeam={handleSelectTeam}
+                  takenTeamIds={takenTeamIds}
+                  disabled={saving}
+                />
+              </Box>
             );
           })}
         </Stack>
