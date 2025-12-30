@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress, Alert } from '@mui/material';
+import { Box, CircularProgress, Typography, Paper, Stack, Chip, LinearProgress } from '@mui/material';
 import { EmojiEvents, TrendingUp, CalendarMonth, People, SportsFootball } from '@mui/icons-material';
 import { createClient } from '@/lib/supabase/client';
 import AppShell from '@/components/layout/AppShell';
@@ -81,7 +81,6 @@ export default function Home() {
   // Playoff data - now supporting multiple rounds
   const [championshipData, setChampionshipData] = useState<PlayoffRoundData | null>(null);
   const [consolationData, setConsolationData] = useState<PlayoffRoundData | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>('');
 
   const supabase = createClient();
 
@@ -139,20 +138,16 @@ export default function Home() {
             const playoffsActive = latestWeek >= 17 && active.playoffs_enabled;
             setIsPlayoffs(playoffsActive);
 
-            let debugMsg = `Current week: ${latestWeek}, Playoffs active: ${playoffsActive}`;
-
             // If playoffs are active, load playoff data for BOTH championship and consolation
             if (playoffsActive) {
               // Get championship round (Week 18)
-              const { data: championshipRound, error: champError } = await supabase
+              const { data: championshipRound } = await supabase
                 .from('playoff_rounds_v2')
                 .select('id, round_type, week')
                 .eq('league_season_id', active.id)
                 .eq('week', 18)
                 .eq('round_type', 'championship')
                 .single();
-
-              debugMsg += `\nChampionship round found: ${!!championshipRound}, Error: ${champError?.message || 'none'}`;
 
               if (championshipRound) {
                 // Load championship participants
@@ -167,8 +162,6 @@ export default function Home() {
                   `)
                   .eq('playoff_round_id', championshipRound.id)
                   .order('seed', { ascending: true });
-
-                debugMsg += `\nChampionship participants: ${champParticipants?.length || 0}`;
 
                 const transformedChampParticipants = (champParticipants || []).map((p: any) => ({
                   ...p,
@@ -190,8 +183,6 @@ export default function Home() {
                   `)
                   .eq('playoff_round_id', championshipRound.id);
 
-                debugMsg += `\nChampionship picks: ${champPicks?.length || 0}`;
-
                 const transformedChampPicks = (champPicks || []).map((p: any) => ({
                   ...p,
                   team: Array.isArray(p.team) ? p.team[0] : p.team,
@@ -208,15 +199,13 @@ export default function Home() {
               }
 
               // Get consolation round (Week 18)
-              const { data: consolationRound, error: consolError } = await supabase
+              const { data: consolationRound } = await supabase
                 .from('playoff_rounds_v2')
                 .select('id, round_type, week')
                 .eq('league_season_id', active.id)
                 .eq('week', 18)
                 .eq('round_type', 'consolation')
                 .single();
-
-              debugMsg += `\nConsolation round found: ${!!consolationRound}, Error: ${consolError?.message || 'none'}`;
 
               if (consolationRound) {
                 // Load consolation participants
@@ -231,8 +220,6 @@ export default function Home() {
                   `)
                   .eq('playoff_round_id', consolationRound.id)
                   .order('seed', { ascending: true });
-
-                debugMsg += `\nConsolation participants: ${consolParticipants?.length || 0}`;
 
                 const transformedConsolParticipants = (consolParticipants || []).map((p: any) => ({
                   ...p,
@@ -254,8 +241,6 @@ export default function Home() {
                   `)
                   .eq('playoff_round_id', consolationRound.id);
 
-                debugMsg += `\nConsolation picks: ${consolPicks?.length || 0}`;
-
                 const transformedConsolPicks = (consolPicks || []).map((p: any) => ({
                   ...p,
                   team: Array.isArray(p.team) ? p.team[0] : p.team,
@@ -271,8 +256,6 @@ export default function Home() {
                 });
               }
             }
-
-            setDebugInfo(debugMsg);
 
             // Load regular season stats
             const { data: standings } = await supabase
@@ -336,13 +319,6 @@ export default function Home() {
       onLeagueChange={handleLeagueChange}
     >
       <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, maxWidth: isPlayoffs ? '1400px' : '100%', mx: 'auto' }}>
-        {/* Debug Info (temporary) */}
-        {debugInfo && (
-          <Alert severity="info" sx={{ mb: 2, whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-            {debugInfo}
-          </Alert>
-        )}
-
         {/* Season Progress */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
