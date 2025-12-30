@@ -216,8 +216,11 @@ export default function PlayoffsPage() {
     loadData();
   }, [supabase]);
 
-  const handleSelectTeam = async (game: Game, teamId: string) => {
-    if (!round || !participant || saving) return;
+  const handleSelectTeam = async (gameId: string, teamId: string | null) => {
+    if (!round || !participant || saving || !teamId) return;
+
+    const game = games.find(g => g.id === gameId);
+    if (!game) return;
 
     setSaving(true);
 
@@ -238,7 +241,7 @@ export default function PlayoffsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         roundId: round.id,
-        gameId: game.id,
+        gameId,
         teamId,
         pickPosition: nextAvailablePosition,
       }),
