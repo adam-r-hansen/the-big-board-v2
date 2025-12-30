@@ -34,6 +34,8 @@ type Game = {
   away_score: number | null;
   game_utc: string;
   status: string;
+  home_team_data?: Team;
+  away_team_data?: Team;
 };
 
 type PlayoffPick = {
@@ -144,7 +146,8 @@ export default function PlayoffsPage() {
       setRound(userRound);
       setParticipant(userParticipant);
 
-      if (userRound.draft_start_time) {
+      // Only generate schedule for championship/semifinal rounds
+      if ((userRound.round_type === 'championship' || userRound.round_type === 'semifinal') && userRound.draft_start_time) {
         const sched = generateUnlockSchedule(
           userRound.week as 17 | 18,
           new Date(userRound.draft_start_time),
@@ -187,15 +190,25 @@ export default function PlayoffsPage() {
       setMyPicks(userPicks);
       setAllPicks(transformedPicks);
 
-      // Load available games for this week
+      // Load available games for this week WITH team data
       const { data: gamesData } = await supabase
         .from('games')
-        .select('*')
+        .select(`
+          *,
+          home_team_data:teams!games_home_team_fkey(id, name, short_name, abbreviation, color_primary, logo),
+          away_team_data:teams!games_away_team_fkey(id, name, short_name, abbreviation, color_primary, logo)
+        `)
         .eq('season', 2025)
         .eq('week', userRound.week)
         .order('game_utc', { ascending: true });
 
-      setGames(gamesData || []);
+      const transformedGames = (gamesData || []).map((g: any) => ({
+        ...g,
+        home_team_data: Array.isArray(g.home_team_data) ? g.home_team_data[0] : g.home_team_data,
+        away_team_data: Array.isArray(g.away_team_data) ? g.away_team_data[0] : g.away_team_data,
+      }));
+
+      setGames(transformedGames);
 
       setLoading(false);
     };
@@ -250,7 +263,8 @@ export default function PlayoffsPage() {
     setSaving(false);
   };
 
-  const draftComplete = schedule.length > 0 && isDraftComplete(schedule, now);
+  const draftComplete = schedule.length === 0 || isDraftComplete(schedule, now);
+  const isOpenPicks = round?.round_type === 'consolation' || round?.round_type === 'non_playoff';
 
   const getRoundTitle = () => {
     if (round?.round_type === 'championship') return 'Championship';
@@ -287,12 +301,12 @@ export default function PlayoffsPage() {
             {getRoundTitle()}
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Week {round.week} • {draftComplete ? 'Open Swaps (1/hour)' : 'Drafting'}
+            Week {round.week} • {isOpenPicks ? 'Open Picks' : (draftComplete ? 'Open Swaps (1/hour)' : 'Drafting')}
           </Typography>
         </Box>
 
-        {/* Draft Status */}
-        {!draftComplete && participant.seed && (
+        {/* Draft Status - Only show for championship/semifinal */}
+        {!isOpenPicks && !draftComplete && participant.seed && (
           <Paper sx={{ p: 2, mb: 3, bgcolor: 'info.main', color: 'white' }}>
             <Typography variant="body2" fontWeight={600}>
               Seed #{participant.seed}
@@ -310,7 +324,7 @@ export default function PlayoffsPage() {
         {myPicks.length === participant.picks_available && (
           <Alert severity="success" sx={{ mb: 3 }}>
             <CheckCircle sx={{ mr: 1 }} />
-            All picks made! You can swap any pick once per hour until games lock.
+            All picks made! {!isOpenPicks && 'You can swap any pick once per hour until games lock.'}
           </Alert>
         )}
 
@@ -361,7 +375,7 @@ export default function PlayoffsPage() {
                   {[1, 2, 3, 4].map((position) => {
                     const pick = participantPicks.find(pick => pick.pick_position === position);
                     const unlocked = isCurrentUser && !pick && participant && 
-                      isPickUnlocked(schedule, participant.seed, position, now);
+                      (isOpenPicks || isPickUnlocked(schedule, participant.seed, position, now));
                     const gameLocked = pick?.game ? new Date(pick.game.game_utc) <= now : false;
                     
                     return (
@@ -429,13 +443,11 @@ export default function PlayoffsPage() {
           {games.map((game) => {
             const gameLocked = new Date(game.game_utc) <= now;
             const myPickInGame = myPicks.find(p => p.game_id === game.id);
-            const homeTeam = games.length > 0 ? allPicks.find(p => p.team_id === game.home_team)?.team : null;
-            const awayTeam = games.length > 0 ? allPicks.find(p => p.team_id === game.away_team)?.team : null;
 
             const nextAvailablePosition = participant ? 
               [1, 2, 3, 4].find(pos => 
                 !myPicks.find(p => p.pick_position === pos) && 
-                (draftComplete || isPickUnlocked(schedule, participant.seed, pos, now))
+                (isOpenPicks || draftComplete || isPickUnlocked(schedule, participant.seed, pos, now))
               ) : null;
 
             return (
@@ -452,7 +464,7 @@ export default function PlayoffsPage() {
                         disabled={saving || gameLocked || !nextAvailablePosition}
                         sx={{ minWidth: 120 }}
                       >
-                        {awayTeam?.short_name || 'Away'}
+                        {game.away_team_data?.short_name || 'Away'}
                       </Button>
                       <Button
                         variant={myPickInGame?.team_id === game.home_team ? 'contained' : 'outlined'}
@@ -460,7 +472,7 @@ export default function PlayoffsPage() {
                         disabled={saving || gameLocked || !nextAvailablePosition}
                         sx={{ minWidth: 120 }}
                       >
-                        {homeTeam?.short_name || 'Home'}
+                        {game.home_team_data?.short_name || 'Home'}
                       </Button>
                     </Stack>
                   </Box>
