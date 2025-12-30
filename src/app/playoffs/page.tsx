@@ -231,18 +231,17 @@ export default function PlayoffsPage() {
   const handleSelectTeam = async (gameId: string, teamId: string | null) => {
     if (!round || !participant || saving || !teamId) return;
 
-    const game = games.find(g => g.id === gameId);
-    if (!game) return;
-
     setSaving(true);
 
-    // Find next available pick position
-    const nextAvailablePosition = [1, 2, 3, 4].find(pos => 
-      !myPicks.find(p => p.pick_position === pos) && 
-      (isOpenPicks || draftComplete || isPickUnlocked(schedule, participant.seed, pos, now))
-    );
+    // Determine if this is a tiebreaker pick (position 5 for seeds 1 and 3)
+    const isTiebreakerPick = gameId === round.tiebreaker_game_id;
+    const pickPosition = isTiebreakerPick ? 5 : 
+      [1, 2, 3, 4].find(pos => 
+        !myPicks.find(p => p.pick_position === pos) && 
+        (isOpenPicks || draftComplete || isPickUnlocked(schedule, participant.seed, pos, now))
+      );
 
-    if (!nextAvailablePosition) {
+    if (!pickPosition) {
       alert('No available pick positions');
       setSaving(false);
       return;
@@ -255,7 +254,7 @@ export default function PlayoffsPage() {
         roundId: round.id,
         gameId,
         teamId,
-        pickPosition: nextAvailablePosition,
+        pickPosition,
       }),
     });
 
@@ -329,6 +328,9 @@ export default function PlayoffsPage() {
   }
 
   const isHigherSeed = participant.seed === 1 || participant.seed === 3;
+  const regularPicksComplete = myPicks.filter(p => p.pick_position <= 4).length === 4;
+  const hasTiebreakerPick = myPicks.some(p => p.pick_position === 5);
+  const showTiebreaker = isHigherSeed && regularPicksComplete && !hasTiebreakerPick && tiebreakerGame;
 
   return (
     <AppShell>
@@ -360,27 +362,21 @@ export default function PlayoffsPage() {
         )}
 
         {/* All Picks Made Alert */}
-        {myPicks.length === participant.picks_available && (
+        {myPicks.filter(p => p.pick_position <= 4).length === participant.picks_available && !showTiebreaker && (
           <Alert severity="success" sx={{ mb: 3 }}>
             <CheckCircle sx={{ mr: 1 }} />
             All picks made! {!isOpenPicks && 'You can swap any pick once per hour until games lock.'}
           </Alert>
         )}
 
-        {/* Tiebreaker Info */}
-        {tiebreakerGame && (
+        {/* Tiebreaker Selection Alert */}
+        {showTiebreaker && (
           <Alert severity="warning" sx={{ mb: 3 }}>
             <Typography variant="body2" fontWeight={600} gutterBottom>
-              🏆 Tiebreaker Game (5th Pick)
+              🏆 Select Your Tiebreaker Team (5th Pick)
             </Typography>
             <Typography variant="body2">
-              <strong>{tiebreakerGame.away.short_name} @ {tiebreakerGame.home.short_name}</strong> - Sunday {new Date(tiebreakerGame.game_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-            </Typography>
-            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-              {isHigherSeed 
-                ? `As seed #${participant.seed}, you get the ${participant.seed === 1 ? tiebreakerGame.home.short_name : tiebreakerGame.away.short_name} automatically if there's a tie.`
-                : `If there's a tie, seed #${participant.seed === 2 ? '1' : '3'} gets the tiebreaker advantage.`
-              }
+              As seed #{participant.seed}, you must choose a team from the Sunday night game below. This will be used if there's a tie after your 4 regular picks.
             </Typography>
           </Alert>
         )}
@@ -395,6 +391,7 @@ export default function PlayoffsPage() {
           {allParticipants.map((p) => {
             const participantPicks = allPicks.filter(pick => pick.profile_id === p.profile_id);
             const isCurrentUser = p.profile_id === userId;
+            const participantIsHigherSeed = p.seed === 1 || p.seed === 3;
 
             return (
               <Paper 
@@ -425,14 +422,16 @@ export default function PlayoffsPage() {
                 </Stack>
 
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  {participantPicks.length}/{p.picks_available} picks
+                  {participantPicks.filter(pick => pick.pick_position <= 4).length}/4 picks
+                  {participantIsHigherSeed && ` + ${participantPicks.some(pick => pick.pick_position === 5) ? '1' : '0'} tiebreaker`}
                 </Typography>
 
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 1 }}>
-                  {[1, 2, 3, 4].map((position) => {
+                <Box sx={{ display: 'grid', gridTemplateColumns: participantIsHigherSeed ? 'repeat(5, 1fr)' : 'repeat(4, 1fr)', gap: 1 }}>
+                  {(participantIsHigherSeed ? [1, 2, 3, 4, 5] : [1, 2, 3, 4]).map((position) => {
                     const pick = participantPicks.find(pick => pick.pick_position === position);
+                    const isTiebreakerPosition = position === 5;
                     const unlocked = isCurrentUser && !pick && participant && 
-                      (isOpenPicks || isPickUnlocked(schedule, participant.seed, position, now));
+                      (position <= 4 ? (isOpenPicks || isPickUnlocked(schedule, participant.seed, position, now)) : regularPicksComplete);
                     const gameLocked = pick?.game ? new Date(pick.game.game_utc) <= now : false;
                     
                     return (
@@ -460,8 +459,14 @@ export default function PlayoffsPage() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           boxShadow: unlocked ? '0 0 8px rgba(66, 165, 245, 0.4)' : 'none',
+                          position: 'relative',
                         }}
                       >
+                        {isTiebreakerPosition && !pick && (
+                          <Typography variant="caption" sx={{ position: 'absolute', top: 2, fontSize: 9, color: 'warning.main', fontWeight: 700 }}>
+                            TB
+                          </Typography>
+                        )}
                         {pick ? (
                           gameLocked ? (
                             <Box
@@ -512,6 +517,31 @@ export default function PlayoffsPage() {
               />
             );
           })}
+
+          {/* Tiebreaker Game - Only show for higher seeds after 4 picks */}
+          {showTiebreaker && tiebreakerGame && (
+            <Box sx={{ position: 'relative' }}>
+              <Chip 
+                label="TIEBREAKER GAME (5th Pick)" 
+                color="warning" 
+                size="small" 
+                sx={{ 
+                  position: 'absolute', 
+                  top: 8, 
+                  right: 8, 
+                  zIndex: 10,
+                  fontWeight: 700 
+                }} 
+              />
+              <PlayoffGameCard
+                game={tiebreakerGame}
+                selectedTeamId={myPicks.find(p => p.pick_position === 5)?.team_id}
+                onSelectTeam={handleSelectTeam}
+                takenTeamIds={new Set()} // No team restrictions for tiebreaker
+                disabled={saving}
+              />
+            </Box>
+          )}
         </Stack>
       </Box>
     </AppShell>
