@@ -45,7 +45,7 @@ interface Props {
   picks: PlayoffPick[];
   currentUserId: string | null;
   week: number;
-  roundType: 'semifinal' | 'championship';
+  roundType: 'semifinal' | 'championship' | 'consolation';
 }
 
 export default function PlayoffBracket({ participants, picks, currentUserId, week, roundType }: Props) {
@@ -72,6 +72,27 @@ export default function PlayoffBracket({ participants, picks, currentUserId, wee
   };
 
   const getRankStyle = (index: number) => {
+    if (roundType === 'consolation') {
+      // Bronze for consolation winner
+      if (index === 0) {
+        return {
+          borderColor: '#cd7f32',
+          boxShadow: '0 4px 20px rgba(205, 127, 50, 0.3)',
+          rankIcon: '🥉',
+          badgeBg: '#cd7f32',
+          badgeColor: '#fff',
+        };
+      }
+      return {
+        borderColor: 'divider',
+        boxShadow: 'none',
+        rankIcon: null,
+        badgeBg: 'grey.600',
+        badgeColor: 'white',
+      };
+    }
+
+    // Championship/Semifinal styling
     if (index === 0) {
       return {
         borderColor: '#ffd700',
@@ -98,16 +119,30 @@ export default function PlayoffBracket({ participants, picks, currentUserId, wee
     };
   };
 
+  const getTitle = () => {
+    if (roundType === 'semifinal') return `Week ${week} Semifinals`;
+    if (roundType === 'championship') return `Week ${week} Championship`;
+    if (roundType === 'consolation') return `Week ${week} Consolation (3rd Place)`;
+    return `Week ${week} Playoffs`;
+  };
+
+  const getSubtitle = () => {
+    if (roundType === 'semifinal') return 'Top 2 advance to Championship';
+    if (roundType === 'championship') return 'Top 2 advance to victory';
+    if (roundType === 'consolation') return 'Winner claims 3rd place';
+    return '';
+  };
+
   return (
     <Box>
       {/* Header */}
       <Box sx={{ textAlign: 'center', mb: 3 }}>
         <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, mb: 1 }}>
-          <EmojiEvents sx={{ fontSize: 32, color: 'warning.main' }} />
-          Week {week} {roundType === 'semifinal' ? 'Semifinals' : 'Championship'}
+          <EmojiEvents sx={{ fontSize: 32, color: roundType === 'consolation' ? '#cd7f32' : 'warning.main' }} />
+          {getTitle()}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Top 2 advance to {roundType === 'semifinal' ? 'Championship' : 'victory'}
+          {getSubtitle()}
         </Typography>
       </Box>
 
