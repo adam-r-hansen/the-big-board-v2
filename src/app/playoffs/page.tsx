@@ -77,6 +77,7 @@ export default function PlayoffsPage() {
   const [myPicks, setMyPicks] = useState<PlayoffPick[]>([]);
   const [allPicks, setAllPicks] = useState<PlayoffPick[]>([]);
   const [games, setGames] = useState<Game[]>([]);
+  const [tiebreakerGame, setTiebreakerGame] = useState<Game | null>(null);
   const [schedule, setSchedule] = useState<UnlockWindow[]>([]);
   const [now, setNow] = useState(new Date());
   const [userId, setUserId] = useState<string | null>(null);
@@ -208,7 +209,18 @@ export default function PlayoffsPage() {
         away: Array.isArray(g.away) ? g.away[0] : g.away,
       }));
 
-      setGames(transformedGames);
+      // Separate tiebreaker game from regular games
+      if (userRound.tiebreaker_game_id) {
+        const tiebreaker = transformedGames.find(g => g.id === userRound.tiebreaker_game_id);
+        if (tiebreaker) {
+          setTiebreakerGame(tiebreaker);
+        }
+        // Filter out tiebreaker from regular games
+        const regularGames = transformedGames.filter(g => g.id !== userRound.tiebreaker_game_id);
+        setGames(regularGames);
+      } else {
+        setGames(transformedGames);
+      }
 
       setLoading(false);
     };
@@ -316,25 +328,7 @@ export default function PlayoffsPage() {
     });
   }
 
-  // TIEBREAKER LOGIC: Filter games based on seed and pick position
-  const isTiebreakerGame = (gameId: string) => round.tiebreaker_game_id === gameId;
   const isHigherSeed = participant.seed === 1 || participant.seed === 3;
-  const nextPickPosition = [1, 2, 3, 4].find(pos => !myPicks.find(p => p.pick_position === pos));
-  const canSelectTiebreaker = isHigherSeed && nextPickPosition === 4;
-
-  // Filter games: hide tiebreaker from lower seeds, show only for higher seeds on 4th pick
-  const filteredGames = games.filter(game => {
-    if (!isTiebreakerGame(game.id)) return true; // Regular games always show
-    
-    // Tiebreaker game logic
-    if (isOpenPicks) {
-      // In consolation/non-playoff: only seed 3 can pick it as 4th pick
-      return participant.seed === 3 && nextPickPosition === 4;
-    } else {
-      // In championship/semifinal: only seed 1 can pick it as 4th pick
-      return isHigherSeed && nextPickPosition === 4;
-    }
-  });
 
   return (
     <AppShell>
@@ -374,9 +368,20 @@ export default function PlayoffsPage() {
         )}
 
         {/* Tiebreaker Info */}
-        {isHigherSeed && nextPickPosition === 4 && round.tiebreaker_game_id && (
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <strong>Tiebreaker Available:</strong> As seed #{participant.seed}, the Sunday night game is reserved for your 4th pick. This will be used to break ties.
+        {tiebreakerGame && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <Typography variant="body2" fontWeight={600} gutterBottom>
+              🏆 Tiebreaker Game (5th Pick)
+            </Typography>
+            <Typography variant="body2">
+              <strong>{tiebreakerGame.away.short_name} @ {tiebreakerGame.home.short_name}</strong> - Sunday {new Date(tiebreakerGame.game_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </Typography>
+            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+              {isHigherSeed 
+                ? `As seed #${participant.seed}, you get the ${participant.seed === 1 ? tiebreakerGame.home.short_name : tiebreakerGame.away.short_name} automatically if there's a tie.`
+                : `If there's a tie, seed #${participant.seed === 2 ? '1' : '3'} gets the tiebreaker advantage.`
+              }
+            </Typography>
           </Alert>
         )}
 
@@ -492,35 +497,19 @@ export default function PlayoffsPage() {
         </Typography>
 
         <Stack spacing={2}>
-          {filteredGames.map((game) => {
+          {games.map((game) => {
             const myPickInGame = myPicks.find(p => p.game_id === game.id);
             const selectedTeamId = myPickInGame?.team_id;
-            const isTiebreaker = isTiebreakerGame(game.id);
 
             return (
-              <Box key={game.id} sx={{ position: 'relative' }}>
-                {isTiebreaker && (
-                  <Chip 
-                    label="TIEBREAKER" 
-                    color="warning" 
-                    size="small" 
-                    sx={{ 
-                      position: 'absolute', 
-                      top: 8, 
-                      right: 8, 
-                      zIndex: 10,
-                      fontWeight: 700 
-                    }} 
-                  />
-                )}
-                <PlayoffGameCard
-                  game={game}
-                  selectedTeamId={selectedTeamId}
-                  onSelectTeam={handleSelectTeam}
-                  takenTeamIds={takenTeamIds}
-                  disabled={saving}
-                />
-              </Box>
+              <PlayoffGameCard
+                key={game.id}
+                game={game}
+                selectedTeamId={selectedTeamId}
+                onSelectTeam={handleSelectTeam}
+                takenTeamIds={takenTeamIds}
+                disabled={saving}
+              />
             );
           })}
         </Stack>
