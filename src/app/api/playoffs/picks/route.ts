@@ -74,6 +74,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Round not found' }, { status: 404 });
   }
 
+  const isOpenPicks = round.round_type === 'consolation' || round.round_type === 'non_playoff';
+
   // Get participant info (seed, picks_available)
   const { data: participant, error: pError } = await supabase
     .from('playoff_participants_v2')
@@ -97,8 +99,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Game has already started' }, { status: 400 });
   }
 
-  // For playoff rounds (semifinal/championship), check draft rules
-  if (round.round_type === 'semifinal' || round.round_type === 'championship') {
+  // For championship/semifinal rounds, enforce draft rules and prevent duplicate teams
+  if (!isOpenPicks) {
     const week = round.week as 17 | 18;
     const schedule = generateUnlockSchedule(
       week,
@@ -127,102 +129,77 @@ export async function POST(request: NextRequest) {
         .eq('game_id', gameId)
         .single();
 
-      // If swapping an existing pick, check cooldown
+      // If swapping and last swap was less than 1 hour ago
       if (existingPick?.last_swap_at) {
         const lastSwap = new Date(existingPick.last_swap_at);
         const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        
         if (lastSwap > hourAgo) {
-          const waitMinutes = Math.ceil((lastSwap.getTime() + 3600000 - Date.now()) / 60000);
-          return NextResponse.json({ 
-            error: `You can swap again in ${waitMinutes} minutes` 
-          }, { status: 400 });
+          return NextResponse.json({ error: 'You can only swap once per hour' }, { status: 400 });
         }
       }
     }
 
-    // Check if THIS SPECIFIC TEAM is already picked by another playoff participant
-    const { data: existingTeamPick } = await supabase
+    // Check if team is already taken by someone else in this round (championship/semifinal only)
+    const { data: teamTaken } = await supabase
       .from('playoff_picks_v2')
       .select('id, profile_id')
       .eq('playoff_round_id', roundId)
-      .eq('team_id', teamId)  // ✅ Check if THIS TEAM is taken
+      .eq('team_id', teamId)
       .neq('profile_id', user.id)
-      .maybeSingle();
+      .single();
 
-    if (existingTeamPick) {
-      return NextResponse.json({ error: 'This team has already been picked by another playoff participant' }, { status: 400 });
+    if (teamTaken) {
+      return NextResponse.json({ error: 'Team already picked by another player' }, { status: 400 });
     }
   }
 
-  // Check if user already has a pick at this position
-  const { data: existingPositionPick } = await supabase
+  // Check if pick already exists for this game
+  const { data: existingPick } = await supabase
     .from('playoff_picks_v2')
     .select('id')
     .eq('playoff_round_id', roundId)
     .eq('profile_id', user.id)
-    .eq('pick_position', pickPosition || 1)
-    .maybeSingle();
+    .eq('game_id', gameId)
+    .single();
 
-  const now = new Date().toISOString();
-
-  if (existingPositionPick) {
+  if (existingPick) {
     // Update existing pick
-    const { data: updated, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('playoff_picks_v2')
       .update({
-        game_id: gameId,
         team_id: teamId,
-        picked_at: now,
-        last_swap_at: now,
-        updated_at: now,
+        last_swap_at: new Date().toISOString(),
       })
-      .eq('id', existingPositionPick.id)
-      .select()
-      .single();
+      .eq('id', existingPick.id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ pick: updated, action: 'updated' });
-  } else {
-    // Count existing picks
-    const { count } = await supabase
-      .from('playoff_picks_v2')
-      .select('*', { count: 'exact', head: true })
-      .eq('playoff_round_id', roundId)
-      .eq('profile_id', user.id);
-
-    if ((count || 0) >= participant.picks_available) {
-      return NextResponse.json({ error: 'You have used all your picks' }, { status: 400 });
-    }
-
-    // Create new pick
-    const { data: newPick, error: insertError } = await supabase
-      .from('playoff_picks_v2')
-      .insert({
-        playoff_round_id: roundId,
-        profile_id: user.id,
-        game_id: gameId,
-        team_id: teamId,
-        pick_position: pickPosition || (count || 0) + 1,
-        unlock_time: now,
-        picked_at: now,
-        last_swap_at: now,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ pick: newPick, action: 'created' });
+    return NextResponse.json({ message: 'Pick updated' });
   }
+
+  // Create new pick
+  const actualPickPosition = pickPosition || (await getNextPickPosition(supabase, roundId, user.id));
+
+  const { error: insertError } = await supabase
+    .from('playoff_picks_v2')
+    .insert({
+      playoff_round_id: roundId,
+      profile_id: user.id,
+      game_id: gameId,
+      team_id: teamId,
+      pick_position: actualPickPosition,
+    });
+
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ message: 'Pick created' });
 }
 
-// DELETE /api/playoffs/picks?pickId=xxx
+// DELETE /api/playoffs/picks - Remove a pick (unpick)
 export async function DELETE(request: NextRequest) {
   const supabase = await createClient();
   
@@ -241,23 +218,19 @@ export async function DELETE(request: NextRequest) {
   // Verify ownership
   const { data: pick } = await supabase
     .from('playoff_picks_v2')
-    .select('profile_id, game_id, playoff_round_id')
+    .select('*, game:games(game_utc)')
     .eq('id', pickId)
+    .eq('profile_id', user.id)
     .single();
 
-  if (!pick || pick.profile_id !== user.id) {
-    return NextResponse.json({ error: 'Pick not found or not yours' }, { status: 404 });
+  if (!pick) {
+    return NextResponse.json({ error: 'Pick not found or not owned by you' }, { status: 404 });
   }
 
-  // Check if game started
-  const { data: game } = await supabase
-    .from('games')
-    .select('game_utc')
-    .eq('id', pick.game_id)
-    .single();
-
+  // Check if game is locked
+  const game = Array.isArray(pick.game) ? pick.game[0] : pick.game;
   if (game && new Date(game.game_utc) <= new Date()) {
-    return NextResponse.json({ error: 'Cannot delete - game has started' }, { status: 400 });
+    return NextResponse.json({ error: 'Cannot remove pick after game starts' }, { status: 400 });
   }
 
   const { error } = await supabase
@@ -269,5 +242,18 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ message: 'Pick removed' });
+}
+
+async function getNextPickPosition(supabase: any, roundId: string, profileId: string): Promise<number> {
+  const { data: picks } = await supabase
+    .from('playoff_picks_v2')
+    .select('pick_position')
+    .eq('playoff_round_id', roundId)
+    .eq('profile_id', profileId)
+    .order('pick_position', { ascending: false })
+    .limit(1);
+
+  if (!picks || picks.length === 0) return 1;
+  return picks[0].pick_position + 1;
 }
