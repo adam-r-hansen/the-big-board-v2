@@ -99,72 +99,65 @@ export default function PlayoffsPage() {
         return;
       }
 
-      // Dynamically detect current week from games
-      const nowDate = new Date();
-      const { data: nextGame } = await supabase
-        .from('games')
-        .select('week')
-        .eq('season', 2025)
-        .gte('game_utc', nowDate.toISOString())
-        .order('game_utc', { ascending: true })
-        .limit(1)
-        .single();
-
-      const currentWeek = nextGame?.week || 18;
-
-      // Get the most recent playoff round (Week 17 or 18)
-      const { data: roundData, error: roundError } = await supabase
+      // Get all Week 17 & 18 rounds
+      const { data: allRounds, error: roundsError } = await supabase
         .from('playoff_rounds_v2')
         .select('*')
         .eq('league_season_id', leagueSeasonId)
         .in('week', [17, 18])
-        .in('round_type', ['semifinal', 'championship'])
-        .order('week', { ascending: false })
-        .limit(1)
-        .single();
+        .order('week', { ascending: false });
 
-      if (roundError || !roundData) {
-        setError('No active playoff round. Playoffs begin after Week 16.');
+      if (roundsError || !allRounds || allRounds.length === 0) {
+        setError('No active playoff rounds. Playoffs begin after Week 16.');
         setLoading(false);
         return;
       }
 
-      setRound(roundData);
+      // Find which round the current user is participating in
+      let userRound = null;
+      let userParticipant = null;
 
-      if (roundData.draft_start_time) {
+      for (const round of allRounds) {
+        const { data: participantData } = await supabase
+          .from('playoff_participants_v2')
+          .select('*, profile:profiles(display_name, email)')
+          .eq('playoff_round_id', round.id)
+          .eq('profile_id', user.id)
+          .single();
+
+        if (participantData) {
+          userRound = round;
+          userParticipant = {
+            ...participantData,
+            profile: Array.isArray(participantData.profile) ? participantData.profile[0] : participantData.profile
+          };
+          break;
+        }
+      }
+
+      if (!userRound || !userParticipant) {
+        setError('You are not participating in any playoff round');
+        setLoading(false);
+        return;
+      }
+
+      setRound(userRound);
+      setParticipant(userParticipant);
+
+      if (userRound.draft_start_time) {
         const sched = generateUnlockSchedule(
-          roundData.week as 17 | 18,
-          new Date(roundData.draft_start_time),
-          roundData.round_type as 'semifinal' | 'championship'
+          userRound.week as 17 | 18,
+          new Date(userRound.draft_start_time),
+          userRound.round_type as 'semifinal' | 'championship'
         );
         setSchedule(sched);
       }
 
-      const { data: participantData } = await supabase
-        .from('playoff_participants_v2')
-        .select('*, profile:profiles(display_name, email)')
-        .eq('playoff_round_id', roundData.id)
-        .eq('profile_id', user.id)
-        .single();
-
-      const transformedParticipant = participantData ? {
-        ...participantData,
-        profile: Array.isArray(participantData.profile) ? participantData.profile[0] : participantData.profile
-      } : null;
-
-      if (!transformedParticipant) {
-        setError('You are not participating in this playoff round');
-        setLoading(false);
-        return;
-      }
-
-      setParticipant(transformedParticipant);
-
-      // Load all participants
+      // Load all participants in this round
       const { data: allParticipantsData } = await supabase
         .from('playoff_participants_v2')
         .select('*, profile:profiles(display_name, email)')
-        .eq('playoff_round_id', roundData.id)
+        .eq('playoff_round_id', userRound.id)
         .order('seed', { ascending: true });
 
       const transformedAllParticipants = (allParticipantsData || []).map((p: any) => ({
@@ -182,7 +175,7 @@ export default function PlayoffsPage() {
           team:teams(id, name, short_name, abbreviation, color_primary, logo),
           game:games(id, week, home_team, away_team, home_score, away_score, game_utc, status)
         `)
-        .eq('playoff_round_id', roundData.id);
+        .eq('playoff_round_id', userRound.id);
 
       const transformedPicks = (picksData || []).map((p: any) => ({
         ...p,
@@ -199,7 +192,7 @@ export default function PlayoffsPage() {
         .from('games')
         .select('*')
         .eq('season', 2025)
-        .eq('week', roundData.week)
+        .eq('week', userRound.week)
         .order('game_utc', { ascending: true });
 
       setGames(gamesData || []);
@@ -259,6 +252,13 @@ export default function PlayoffsPage() {
 
   const draftComplete = schedule.length > 0 && isDraftComplete(schedule, now);
 
+  const getRoundTitle = () => {
+    if (round?.round_type === 'championship') return 'Championship';
+    if (round?.round_type === 'consolation') return 'Consolation (3rd Place)';
+    if (round?.round_type === 'semifinal') return 'Semifinals';
+    return 'Playoffs';
+  };
+
   if (loading) {
     return (
       <AppShell>
@@ -284,7 +284,7 @@ export default function PlayoffsPage() {
         <Box sx={{ mb: 3 }}>
           <Typography variant="h4" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
             <EmojiEvents sx={{ fontSize: 36, color: 'warning.main' }} />
-            {round.round_type === 'semifinal' ? 'Semifinals' : 'Championship'}
+            {getRoundTitle()}
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Week {round.week} • {draftComplete ? 'Open Swaps (1/hour)' : 'Drafting'}
@@ -317,7 +317,7 @@ export default function PlayoffsPage() {
         {/* Playoff Teams */}
         <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 3 }}>
           <EmojiEvents sx={{ fontSize: 20, color: 'warning.main' }} />
-          Playoff Teams
+          {getRoundTitle()} Teams
         </Typography>
 
         <Stack spacing={2} sx={{ mb: 4 }}>
@@ -337,12 +337,14 @@ export default function PlayoffsPage() {
                 }}
               >
                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
-                  <Chip 
-                    label={`#${p.seed}`} 
-                    size="small" 
-                    color={isCurrentUser ? 'primary' : 'default'}
-                    sx={{ fontWeight: 700 }}
-                  />
+                  {p.seed && (
+                    <Chip 
+                      label={`#${p.seed}`} 
+                      size="small" 
+                      color={isCurrentUser ? 'primary' : 'default'}
+                      sx={{ fontWeight: 700 }}
+                    />
+                  )}
                   <Typography variant="body1" fontWeight={600} sx={{ flexGrow: 1 }}>
                     {p.profile?.display_name || p.profile?.email?.split('@')[0]}
                   </Typography>
